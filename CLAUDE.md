@@ -1,11 +1,13 @@
-# ROI CALCULATOR - MVP
+# ROI CALCULATOR - CUSTO DA INAÇÃO V2.0
 
 ## 📋 VISÃO GERAL
 
-Ferramenta web para acelerar propostas comerciais de projetos de automação industrial, quantificando rapidamente o ROI e gerando apresentações customizadas.
+Ferramenta web para acelerar propostas comerciais de projetos de automação industrial, quantificando o **Custo da Inação** e gerando apresentações customizadas para decisores (CEOs, CFOs, COOs).
+
+**Conceito Central:** "Quanto custa NÃO automatizar?" — O Custo da Inação é um passivo estratégico, um sangramento contínuo no fluxo de caixa que a empresa financia diariamente ao manter processos manuais.
 
 **Problema:** Vendedores perdem dias criando propostas técnico-financeiras para projetos CAPEX
-**Solução:** Input de dados → Cálculo automático → Dashboard + PPTX customizado em minutos
+**Solução:** Input de dados → Motor de Cálculo V2.0 (18 fórmulas) → Dashboard + PPTX customizado em minutos
 **Impacto:** Reduzir tempo de proposta de dias para minutos, aumentar taxa de conversão CAPEX
 
 ---
@@ -14,10 +16,11 @@ Ferramenta web para acelerar propostas comerciais de projetos de automação ind
 
 ### Funcionalidades Core
 1. ✅ Formulário web para input de dados do cliente
-2. ✅ Motor de cálculo de custos e ganhos (4 categorias, 17 subcategorias)
-3. ✅ Dashboard com resultados (Payback, ROI 1/3/5 anos)
-4. ✅ Geração de PPTX customizado (16 slides)
+2. ✅ Motor de cálculo V2.0 — **18 fórmulas** organizadas por **5 Dores** e **6 Áreas de Atuação ARV**
+3. ✅ Dashboard com resultados (Payback, ROI 1/3/5 anos, breakdown por Dor)
+4. ✅ Geração de PPTX customizado (16+ slides)
 5. ✅ Download do arquivo gerado
+6. ✅ Seleção da Área de Atuação ARV (sugere fórmulas relevantes)
 
 ### Fora do Escopo (MVP)
 - ❌ Autenticação de usuários
@@ -56,23 +59,24 @@ roi-calculator/
 │
 ├── config/
 │   ├── __init__.py
-│   └── constants.py                # Constantes (parâmetros ARV)
+│   ├── constants.py                # Constantes V2.0 (encargos, divisores)
+│   └── areas.py                    # Mapeamento Áreas ARV → Fórmulas
 │
 ├── models/
 │   ├── __init__.py
-│   ├── inputs.py                   # Schemas de entrada
-│   ├── calculations.py             # Models de cálculo
+│   ├── inputs.py                   # Schemas de entrada (V2.0)
+│   ├── calculations.py             # Models de cálculo (18 fórmulas)
 │   └── results.py                  # Schemas de resultado
 │
 ├── core/
 │   ├── __init__.py
-│   ├── calculator.py               # Motor de cálculo principal
-│   ├── formulas.py                 # Fórmulas detalhadas
+│   ├── calculator.py               # Motor de cálculo principal V2.0
+│   ├── formulas.py                 # 18 Fórmulas detalhadas (F01-F18)
 │   └── validators.py               # Validações de input
 │
 ├── ui/
 │   ├── __init__.py
-│   ├── forms.py                    # Formulários Streamlit
+│   ├── forms.py                    # Formulários Streamlit (V2.0)
 │   ├── dashboard.py                # Dashboard de resultados
 │   └── styles.py                   # CSS customizado
 │
@@ -84,7 +88,52 @@ roi-calculator/
 └── tests/
     ├── __init__.py
     ├── test_calculations.py        # Testes unitários
-    └── test_formulas.py            # Testes de fórmulas
+    └── test_formulas.py            # Testes de fórmulas (F01-F18)
+```
+
+---
+
+## ⚙️ PRINCÍPIOS DE CUSTEIO REAL (Regras Base para CFOs)
+
+Estes princípios sustentam TODOS os cálculos. São premissas financeiras defensáveis.
+
+### Regra #1: Fator de Encargos Trabalhistas (REVISADO)
+
+Não usar fator fixo simplificado. O sistema deve permitir seleção do fator:
+
+| Fator | Descrição | Uso |
+|-------|-----------|-----|
+| **1,7** (Conservador) | INSS, FGTS, 13º, Férias+1/3, SAT/RAT | **PADRÃO do sistema** — Lucro Real/Presumido |
+| **1,85** (Médio) | + Vale-transporte, Vale-refeição | Opcional |
+| **2,0** (Completo) | + Plano de saúde, Seguro de vida | Opcional |
+
+**Exemplo:** Operador com salário R$ 2.500 → Custo real: R$ 2.500 × 1,7 = **R$ 4.250/mês**
+
+```python
+# Custo Total do Colaborador = Salário Bruto × Fator de Encargos
+FATOR_ENCARGOS_CONSERVADOR = 1.7   # PADRÃO
+FATOR_ENCARGOS_MEDIO = 1.85
+FATOR_ENCARGOS_COMPLETO = 2.0
+```
+
+### Regra #2: Divisor de Horas do Operador (REVISADO)
+
+- **176 horas** → Divisor para custo da hora do operador (44h/semana × 4 semanas)
+- **220 horas** → Manter APENAS para cálculo de horas extras (conforme CLT)
+
+```python
+# Custo da Hora do Operador = (Salário Bruto × Fator de Encargos) ÷ 176 horas
+HORAS_MES_CUSTO_PRODUCAO = 176  # Para custo hora do operador
+HORAS_MES_CLT = 220              # Para cálculo de horas extras (CLT)
+```
+
+### Regra #3: Custo da Hora Parada (Custo de Oportunidade)
+
+O custo de uma hora de inatividade = faturamento que DEIXOU de ser gerado (não apenas salários).
+
+```python
+# Custo da Hora Parada = Faturamento Mensal da Linha ÷ 176 horas úteis
+# Este valor é INPUT do usuário (varia por cliente/linha)
 ```
 
 ---
@@ -95,222 +144,370 @@ roi-calculator/
 
 ```python
 """
-Parâmetros ARV (constantes do sistema)
+Parâmetros ARV V2.0 (constantes do sistema)
+Baseado no documento "Custo da Inação V2.0 Revisado"
 """
 
-# Parâmetros de Custo Base
-SALARIO_COLABORADOR = 5000  # R$
-HORAS_TRABALHADAS_MES = 220  # h
+# === REGRA #1: Fatores de Encargos Trabalhistas ===
+FATOR_ENCARGOS_CONSERVADOR = 1.7   # Lucro Real/Presumido (PADRÃO)
+FATOR_ENCARGOS_MEDIO = 1.85        # + VT, VR
+FATOR_ENCARGOS_COMPLETO = 2.0      # + Plano saúde, seguro vida
 
-# Custos Operacionais
-CUSTO_HORA_PARADA = 150  # R$/h
-CUSTO_LOGISTICA_REVERSA = 15  # R$
-MULTA_MEDIA_QUALIDADE = 500  # R$
-CUSTO_TREINAMENTO = 1200  # R$
-MULTA_ATRASO = 1000  # R$
+FATOR_ENCARGOS_OPCOES = {
+    "Conservador (1,7x) - Encargos obrigatórios": 1.7,
+    "Médio (1,85x) - + VT/VR": 1.85,
+    "Completo (2,0x) - + Saúde/Seguro": 2.0,
+}
 
-# Fatores
-FATOR_RESCISAO = 2  # múltiplo do salário
-FATOR_PASSIVO_TRABALHISTA = 7  # múltiplo (7 a 12 salários)
-FATOR_HORA_EXTRA = 1.5  # múltiplo
+# === REGRA #2: Divisores de Horas ===
+HORAS_MES_CUSTO_PRODUCAO = 176  # 44h/semana × 4 semanas (custo hora operador)
+HORAS_MES_CLT = 220              # Para cálculos de hora extra (CLT)
+
+# === Fatores de Cálculo ===
+FATOR_ADICIONAL_HORA_EXTRA = 1.5  # Adicional de 50% sobre hora normal
+FATOR_CUSTO_TURNOVER = 1.5        # Benchmark conservador (1,5x a 3,0x salário)
+
+# === Defaults de Input (sugestões para o formulário) ===
+SALARIO_OPERADOR_DEFAULT = 2500   # R$ - Salário bruto médio operador
+SALARIO_INSPETOR_DEFAULT = 3000   # R$
+SALARIO_SUPERVISOR_DEFAULT = 5000 # R$
+DIAS_OPERACAO_ANO_DEFAULT = 250   # dias
 ```
 
-### 2. models/inputs.py
+### 2. config/areas.py
 
 ```python
 """
-Schemas de entrada de dados do cliente
+Mapeamento das 6 Áreas de Atuação ARV → Fórmulas aplicáveis
+Permite sugerir fórmulas relevantes com base na área selecionada
 """
-from dataclasses import dataclass
-from typing import Optional
+
+AREAS_ARV = {
+    "area_1_linhas_montagem": {
+        "nome": "🔧 Linhas de Montagem Automáticas",
+        "descricao": "Automação de linhas de montagem industriais",
+        "formulas_aplicaveis": [
+            "F01", "F02", "F03", "F04",  # Dor 1: Mão de Obra
+            "F05", "F06", "F07",          # Dor 2: Qualidade
+            "F08", "F09", "F10", "F11",   # Dor 3: Produtividade
+            "F12",                         # Dor 4: Segurança
+            "F14", "F15", "F16", "F17", "F18",  # Dor 5: Custos Ocultos
+        ],
+    },
+    "area_2_maquinas_especiais": {
+        "nome": "⚙️ Soluções em Máquinas Especiais",
+        "descricao": "Máquinas customizadas para tarefas únicas",
+        "formulas_aplicaveis": [
+            "F01", "F03", "F14",  # Dependência de Especialista
+            "F11", "F08",         # Flexibilidade/Agilidade
+            "F05", "F07",         # Qualidade
+            "F10",                # Gargalo de Produção
+        ],
+    },
+    "area_3_controle_qualidade": {
+        "nome": "🔍 Controle de Qualidade Automatizado",
+        "descricao": "Sistemas de visão e inspeção automatizada",
+        "formulas_aplicaveis": [
+            "F06", "F14",  # Inspeção Manual
+            "F07",         # Escapes de Qualidade
+            "F05",         # Refugo/Retrabalho
+            "F18",         # Gestão de Dados
+        ],
+    },
+    "area_4_embalagem": {
+        "nome": "📦 Automação de Embalagem (Fim de Linha)",
+        "descricao": "Encaixotamento, paletização, stretch wrapping",
+        "formulas_aplicaveis": [
+            "F08", "F02",         # Gargalo na Expedição
+            "F01", "F04", "F03",  # Mão de Obra/Rotatividade
+            "F12", "F15",         # Segurança/Ergonomia
+            "F07", "F18",         # Erros/Dados
+        ],
+    },
+    "area_5_logistica_interna": {
+        "nome": "🚚 Automação de Logística Interna",
+        "descricao": "AGVs/AMRs, substituição de empilhadeiras",
+        "formulas_aplicaveis": [
+            "F13",                         # Frota de Empilhadeiras (específica)
+            "F09", "F10", "F08", "F12",    # Reutilizáveis
+        ],
+    },
+    "area_6_robotica": {
+        "nome": "🤖 Soluções Robóticas Customizadas",
+        "descricao": "Processos perigosos, insalubres ou alta precisão",
+        "formulas_aplicaveis": [
+            "F12", "F15",         # Processos Perigosos
+            "F01", "F03", "F04",  # Dependência de Especialista
+            "F05", "F07",         # Qualidade Alto Valor
+            "F08",                # Escalar Produção
+        ],
+    },
+}
+```
+
+### 3. models/inputs.py
+
+```python
+"""
+Schemas de entrada de dados do cliente — V2.0
+"""
+from dataclasses import dataclass, field
+from typing import Optional, List
 
 @dataclass
 class ClienteBasicInfo:
     """Informações básicas do cliente"""
     nome_cliente: str
     nome_projeto: str
-    nivel_automacao: str  # "Manual", "Semiautomatizado", "Automatizado"
-    
+    area_atuacao: str  # Chave de AREAS_ARV (ex: "area_1_linhas_montagem")
+    porte_empresa: str  # "pequena", "media", "grande"
+    fator_encargos: float = 1.7  # Selecionável: 1.7 / 1.85 / 2.0
+
 @dataclass
 class ProcessoAtual:
     """Dados do processo atual do cliente"""
-    cadencia_producao: float  # peças/min
-    horas_por_turno: float  # h
-    turnos_por_dia: int  # turnos
-    dias_operacao_ano: int  # dias
-    pessoas_processo_turno: int  # pessoas
-    pessoas_inspecao_turno: int  # pessoas
-    custo_unitario_peca: float  # R$
-    fracao_material: float  # % (0.6 = 60%)
+    # Produção
+    cadencia_producao: float  # peças/min (ou produção mensal direta)
+    producao_mensal: Optional[float] = None  # peças/mês (alternativa à cadência)
+    horas_por_turno: float = 8.0  # h
+    turnos_por_dia: int = 2  # turnos
+    dias_operacao_ano: int = 250  # dias
+    
+    # Pessoas
+    pessoas_processo_turno: int = 5  # operadores por turno
+    pessoas_inspecao_turno: int = 1  # inspetores por turno
+    
+    # Custos unitários
+    salario_medio_operador: float = 2500.0  # R$ bruto
+    salario_medio_inspetor: float = 3000.0  # R$ bruto
+    salario_medio_supervisor: float = 5000.0  # R$ bruto
+    custo_unitario_peca: float = 100.0  # R$
+    custo_materia_prima_peca: float = 15.0  # R$ (custo MP direto por unidade)
+    
+    # Financeiro da linha
+    faturamento_mensal_linha: Optional[float] = None  # R$ (para Custo Hora Parada)
 
 @dataclass
 class DoresSelecionadas:
-    """Dores/custos selecionados pelo usuário"""
-    # Custos Operacionais
-    co1_folha_pagamento: bool = False
-    co2_terceirizacao: bool = False
-    co3_desperdicio: bool = False
-    co4_manutencao: bool = False
+    """
+    Dores/fórmulas selecionadas pelo usuário — V2.0
+    Reorganizado por 5 Dores (em vez de 4 categorias CO/QL/SE/PR)
+    Cada flag mapeia para uma fórmula F01-F18
+    """
+    # DOR 1: CUSTO ELEVADO DE MÃO DE OBRA
+    f01_mao_de_obra_direta: bool = False
+    f02_horas_extras: bool = False
+    f03_curva_aprendizagem: bool = False
+    f04_turnover: bool = False
     
-    # Qualidade
-    ql1_retrabalho: bool = False
-    ql2_refugo: bool = False
-    ql3_inspecao_manual: bool = False
-    ql4_logistica_reversa: bool = False
-    ql5_multas_qualidade: bool = False
+    # DOR 2: BAIXA QUALIDADE
+    f05_refugo_retrabalho: bool = False
+    f06_inspecao_manual: bool = False
+    f07_escapes_qualidade: bool = False
     
-    # Segurança/Ergonomia
-    se1_absenteismo: bool = False
-    se2_turnover: bool = False
-    se3_treinamentos: bool = False
-    se4_passivo_juridico: bool = False
+    # DOR 3: BAIXA PRODUTIVIDADE
+    f08_custo_oportunidade: bool = False
+    f09_ociosidade_silenciosa: bool = False
+    f10_paradas_linha: bool = False
+    f11_setup_changeover: bool = False
     
-    # Produtividade
-    pr1_horas_extras: bool = False
-    pr2_headcount: bool = False
-    pr3_vendas_perdidas: bool = False
-    pr4_multas_atraso: bool = False
+    # DOR 4: FALTA DE SEGURANÇA E ERGONOMIA
+    f12_riscos_acidentes: bool = False
+    f13_frota_empilhadeiras: bool = False  # Específica Área 5
+    
+    # DOR 5: CUSTOS OCULTOS DE GESTÃO E ESTRUTURA
+    f14_supervisao: bool = False
+    f15_compliance_epis: bool = False
+    f16_energia_utilidades: bool = False
+    f17_espaco_fisico: bool = False
+    f18_gestao_dados: bool = False
 
 @dataclass
 class ParametrosDetalhados:
-    """Parâmetros detalhados para cálculos específicos"""
-    # CO-2
-    volume_terceirizado: Optional[float] = None
-    custo_unitario_terceirizado: Optional[float] = None
-    meses_pico: Optional[int] = None
+    """
+    Parâmetros detalhados para cada fórmula — V2.0
+    Campos condicionais: só exibir se a fórmula estiver selecionada
+    """
+    # F01 - Mão de Obra Direta (usa dados de ProcessoAtual, sem params extras)
     
-    # CO-3
-    percentual_desperdicio: Optional[float] = None  # %
+    # F02 - Horas Extras
+    f02_media_he_mes_por_pessoa: Optional[float] = None  # horas extras/mês/pessoa
     
-    # CO-4
-    paradas_nao_planejadas_mes: Optional[int] = None
-    duracao_media_parada_min: Optional[float] = None
+    # F03 - Curva de Aprendizagem
+    f03_novas_contratacoes_ano: Optional[int] = None
+    f03_salario_novato: Optional[float] = None  # R$
+    f03_meses_curva: Optional[int] = None  # meses até produtividade plena
+    f03_salario_supervisor: Optional[float] = None  # R$ (supervisor que treina)
+    f03_percentual_tempo_supervisor: Optional[float] = None  # % do tempo dedicado
     
-    # QL-1
-    percentual_retrabalho: Optional[float] = None  # %
-    fator_retrabalho: Optional[float] = None  # 0.2 = 20%
+    # F04 - Turnover
+    f04_desligamentos_ano: Optional[int] = None
+    f04_fator_custo_turnover: Optional[float] = 1.5  # 1,5 a 3,0 (benchmark)
     
-    # QL-2
-    percentual_scrap: Optional[float] = None  # %
+    # F05 - Refugo e Retrabalho (SEPARADOS na V2.0)
+    f05_percentual_refugo: Optional[float] = None  # %
+    f05_percentual_retrabalho: Optional[float] = None  # %
+    f05_horas_retrabalho_por_unidade: Optional[float] = None  # h
     
-    # QL-4
-    percentual_retorno_garantia: Optional[float] = None  # %
+    # F06 - Inspeção Manual (usa dados de ProcessoAtual: inspetores, salário)
     
-    # QL-5
-    ocorrencias_multa_ano: Optional[int] = None
+    # F07 - Escapes de Qualidade
+    f07_reclamacoes_clientes_ano: Optional[int] = None
+    f07_custo_medio_por_reclamacao: Optional[float] = None  # R$ (realista, não R$300)
     
-    # SE-1
-    perfil_risco_absenteismo: Optional[str] = None  # "baixo", "medio", "alto"
-    dias_perdidos_ano: Optional[int] = None
+    # F08 - Custo de Oportunidade
+    f08_percentual_demanda_reprimida: Optional[float] = None  # %
+    f08_margem_contribuicao: Optional[float] = None  # %
     
-    # SE-2
-    perfil_risco_turnover: Optional[str] = None  # "baixo", "medio", "alto"
-    desligamentos_ano: Optional[int] = None
+    # F09 - Ociosidade Silenciosa
+    f09_minutos_ociosos_por_dia: Optional[float] = None  # min
     
-    # SE-4
-    ocorrencias_processo_ano: Optional[int] = None
+    # F10 - Paradas de Linha
+    f10_paradas_mes: Optional[int] = None
+    f10_duracao_media_parada_horas: Optional[float] = None  # h
+    f10_custo_hora_parada: Optional[float] = None  # R$ (Regra #3)
     
-    # PR-1
-    horas_extras_mes_pessoa: Optional[float] = None
+    # F11 - Setup/Changeover
+    f11_setups_mes: Optional[int] = None
+    f11_horas_por_setup: Optional[float] = None  # h
+    f11_custo_hora_parada: Optional[float] = None  # R$ (Regra #3)
     
-    # PR-2
-    pessoas_adicionais: Optional[int] = None
+    # F12 - Riscos, Acidentes e Doenças (V2.0: 3 componentes)
+    f12_afastamentos_ano: Optional[int] = None
+    f12_custo_medio_afastamento: Optional[float] = None  # R$
+    f12_acidentes_com_lesao_ano: Optional[int] = None
+    f12_custo_medio_acidente: Optional[float] = None  # R$
+    f12_probabilidade_processo: Optional[float] = None  # % (0.05 = 5%)
+    f12_custo_estimado_processo: Optional[float] = None  # R$
     
-    # PR-3
-    demanda_nao_atendida_mes: Optional[float] = None
-    margem_por_peca: Optional[float] = None
+    # F13 - Frota de Empilhadeiras (V2.0: TCO completo)
+    f13_num_empilhadeiras: Optional[int] = None
+    f13_custo_operador_mes: Optional[float] = None  # R$ (salário + encargos)
+    f13_custo_equipamento_mes: Optional[float] = None  # R$ (aluguel/depreciação)
+    f13_custo_energia_mes: Optional[float] = None  # R$
+    f13_custo_manutencao_mes: Optional[float] = None  # R$
     
-    # PR-4
-    ocorrencias_atraso_ano: Optional[int] = None
+    # F14 - Supervisão (NOVA)
+    f14_num_supervisores: Optional[int] = None
+    f14_salario_supervisor: Optional[float] = None  # R$
+    
+    # F15 - Compliance/EPIs (NOVA)
+    f15_custo_epi_ano_por_pessoa: Optional[float] = None  # R$
+    f15_custo_exames_ano_por_pessoa: Optional[float] = None  # R$
+    
+    # F16 - Energia/Utilidades (NOVA)
+    f16_area_operacao_m2: Optional[float] = None  # m²
+    f16_custo_energia_m2_ano: Optional[float] = None  # R$/m²/ano
+    
+    # F17 - Espaço Físico (NOVA)
+    f17_area_m2: Optional[float] = None  # m²
+    f17_custo_m2_ano: Optional[float] = None  # R$/m²/ano
+    f17_percentual_reducao_automacao: Optional[float] = None  # %
+    
+    # F18 - Gestão Manual de Dados (NOVA)
+    f18_pessoas_envolvidas: Optional[int] = None
+    f18_horas_dia_tarefas_dados: Optional[float] = None  # h/dia
 
 @dataclass
 class InvestimentoAutomacao:
     """Dados de investimento da automação"""
     valor_investimento_min: float  # R$
     valor_investimento_max: float  # R$
-    valor_investimento_medio: float  # R$ (calculado)
+    valor_investimento_medio: float  # R$ (calculado ou input)
 ```
 
-### 3. models/calculations.py
+### 4. models/calculations.py
 
 ```python
 """
-Models de cálculo intermediário
+Models de cálculo intermediário — V2.0
+Reorganizado por 5 Dores com 18 fórmulas (F01-F18)
 """
 from dataclasses import dataclass
 
 @dataclass
 class BasesComuns:
-    """Cálculos base reutilizados"""
+    """Cálculos base reutilizados em múltiplas fórmulas"""
     producao_anual: float  # peças/ano
+    producao_mensal: float  # peças/mês
     horas_anuais_operacao: float  # h
-    pessoas_expostas_processo: int  # pessoas
-    pessoas_expostas_inspecao: int  # pessoas
-    custo_material_por_peca: float  # R$
-    custo_hora_operador: float  # R$/h
-    custo_dia_absenteismo: float  # R$/dia
-    custo_rescisao: float  # R$
-    provisao_trabalhista: float  # R$
+    pessoas_expostas_processo: int  # total operadores (todos os turnos)
+    pessoas_expostas_inspecao: int  # total inspetores (todos os turnos)
+    custo_hora_operador: float  # R$/h (com encargos, divisor 176h)
+    custo_hora_parada: float  # R$/h (baseado em faturamento)
+    fator_encargos: float  # 1.7 / 1.85 / 2.0
 
 @dataclass
-class CustosOperacionais:
-    """Custos operacionais calculados"""
-    co1_folha: float = 0.0
-    co2_terceirizacao: float = 0.0
-    co3_desperdicio: float = 0.0
-    co4_manutencao: float = 0.0
+class CustosDor1MaoDeObra:
+    """Dor 1: Custo Elevado de Mão de Obra"""
+    f01_mao_de_obra_direta: float = 0.0
+    f02_horas_extras: float = 0.0
+    f03_curva_aprendizagem: float = 0.0
+    f04_turnover: float = 0.0
     total: float = 0.0
 
 @dataclass
-class CustosQualidade:
-    """Custos de qualidade calculados"""
-    ql1_retrabalho: float = 0.0
-    ql2_refugo: float = 0.0
-    ql3_inspecao: float = 0.0
-    ql4_logistica: float = 0.0
-    ql5_multas: float = 0.0
+class CustosDor2Qualidade:
+    """Dor 2: Baixa Qualidade"""
+    f05_refugo: float = 0.0
+    f05_retrabalho: float = 0.0
+    f05_total: float = 0.0  # Refugo + Retrabalho
+    f06_inspecao_manual: float = 0.0
+    f07_escapes_qualidade: float = 0.0
     total: float = 0.0
 
 @dataclass
-class CustosSeguranca:
-    """Custos de segurança/ergonomia calculados"""
-    se1_absenteismo: float = 0.0
-    se2_turnover: float = 0.0
-    se3_treinamentos: float = 0.0
-    se4_passivo: float = 0.0
+class CustosDor3Produtividade:
+    """Dor 3: Baixa Produtividade"""
+    f08_custo_oportunidade: float = 0.0
+    f09_ociosidade: float = 0.0
+    f10_paradas_linha: float = 0.0
+    f11_setup_changeover: float = 0.0
     total: float = 0.0
 
 @dataclass
-class CustosProdutividade:
-    """Custos de produtividade calculados"""
-    pr1_horas_extras: float = 0.0
-    pr2_headcount: float = 0.0
-    pr3_vendas_perdidas: float = 0.0
-    pr4_multas_atraso: float = 0.0
+class CustosDor4Seguranca:
+    """Dor 4: Falta de Segurança e Ergonomia"""
+    f12_afastamentos: float = 0.0
+    f12_acidentes: float = 0.0
+    f12_risco_legal: float = 0.0
+    f12_total: float = 0.0
+    f13_frota_empilhadeiras: float = 0.0
+    total: float = 0.0
+
+@dataclass
+class CustosDor5CustosOcultos:
+    """Dor 5: Custos Ocultos de Gestão e Estrutura (NOVAS V2.0)"""
+    f14_supervisao: float = 0.0
+    f15_compliance_epis: float = 0.0
+    f16_energia: float = 0.0
+    f17_espaco_fisico: float = 0.0
+    f18_gestao_dados: float = 0.0
     total: float = 0.0
 ```
 
-### 4. models/results.py
+### 5. models/results.py
 
 ```python
 """
-Schemas de resultados finais
+Schemas de resultados finais — V2.0
 """
 from dataclasses import dataclass
 from typing import Dict
 
 @dataclass
 class ResultadosFinanceiros:
-    """Resultados consolidados"""
-    # Custos por categoria
-    total_co: float
-    total_ql: float
-    total_se: float
-    total_pr: float
+    """Resultados consolidados V2.0"""
+    # Custos por Dor
+    total_dor1: float  # Mão de Obra
+    total_dor2: float  # Qualidade
+    total_dor3: float  # Produtividade
+    total_dor4: float  # Segurança
+    total_dor5: float  # Custos Ocultos
     
     # Totais
-    custo_total_anual: float
-    ganho_anual_potencial: float  # baseado em % de redução
+    custo_total_anual_inacao: float  # Soma de todas as dores
+    ganho_anual_potencial: float  # baseado em % de redução por fórmula
     
     # Investimento
     investimento_medio: float
@@ -321,49 +518,49 @@ class ResultadosFinanceiros:
     roi_3_anos: float  # %
     roi_5_anos: float  # %
     
-    # Breakdown detalhado
-    breakdown_co: Dict[str, float]
-    breakdown_ql: Dict[str, float]
-    breakdown_se: Dict[str, float]
-    breakdown_pr: Dict[str, float]
+    # Breakdown detalhado por fórmula
+    breakdown_dor1: Dict[str, float]  # {"F01": valor, "F02": valor, ...}
+    breakdown_dor2: Dict[str, float]
+    breakdown_dor3: Dict[str, float]
+    breakdown_dor4: Dict[str, float]
+    breakdown_dor5: Dict[str, float]
+    
+    # Metadata
+    area_atuacao: str
+    porte_empresa: str
+    fator_encargos_usado: float
 
 @dataclass
 class MetasReducao:
-    """Metas de redução de custos (%)"""
-    # Custos Operacionais
-    meta_co1: float = 0.0
-    meta_co2: float = 0.0
-    meta_co3: float = 0.0
-    meta_co4: float = 0.0
-    
-    # Qualidade
-    meta_ql1: float = 0.0
-    meta_ql2: float = 0.0
-    meta_ql3: float = 0.0
-    meta_ql4: float = 0.0
-    meta_ql5: float = 0.0
-    
-    # Segurança
-    meta_se1: float = 0.0
-    meta_se2: float = 0.0
-    meta_se3: float = 0.0
-    meta_se4: float = 0.0
-    
-    # Produtividade
-    meta_pr1: float = 0.0
-    meta_pr2: float = 0.0
-    meta_pr3: float = 0.0
-    meta_pr4: float = 0.0
+    """Metas de redução de custos (%) — V2.0, por fórmula"""
+    meta_f01: float = 0.0
+    meta_f02: float = 0.0
+    meta_f03: float = 0.0
+    meta_f04: float = 0.0
+    meta_f05: float = 0.0
+    meta_f06: float = 0.0
+    meta_f07: float = 0.0
+    meta_f08: float = 0.0
+    meta_f09: float = 0.0
+    meta_f10: float = 0.0
+    meta_f11: float = 0.0
+    meta_f12: float = 0.0
+    meta_f13: float = 0.0
+    meta_f14: float = 0.0
+    meta_f15: float = 0.0
+    meta_f16: float = 0.0
+    meta_f17: float = 0.0
+    meta_f18: float = 0.0
 ```
 
 ---
 
-## 🧮 FÓRMULAS DETALHADAS (core/formulas.py)
+## 🧮 FÓRMULAS V2.0 DETALHADAS (core/formulas.py) — 18 FÓRMULAS
 
 ### Bases Comuns
 
 ```python
-def calcular_producao_anual(cadencia: float, horas_turno: float, 
+def calcular_producao_anual(cadencia: float, horas_turno: float,
                            turnos_dia: int, dias_ano: int) -> float:
     """
     Produção anual em peças
@@ -371,195 +568,338 @@ def calcular_producao_anual(cadencia: float, horas_turno: float,
     """
     return cadencia * 60 * horas_turno * turnos_dia * dias_ano
 
+def calcular_producao_mensal_from_cadencia(cadencia: float, horas_turno: float,
+                                           turnos_dia: int, dias_mes: float = 21) -> float:
+    """Produção mensal estimada"""
+    return cadencia * 60 * horas_turno * turnos_dia * dias_mes
+
 def calcular_horas_anuais(horas_turno: float, turnos_dia: int, dias_ano: int) -> float:
-    """
-    Horas anuais de operação
-    Fórmula: Horas/turno × Turnos/dia × Dias/ano
-    """
+    """Horas anuais de operação"""
     return horas_turno * turnos_dia * dias_ano
 
 def calcular_pessoas_expostas(pessoas_turno: int, turnos_dia: int) -> int:
-    """
-    Total de pessoas expostas ao processo
-    Fórmula: Pessoas/turno × Turnos/dia
-    """
+    """Total de pessoas expostas (todos os turnos)"""
     return pessoas_turno * turnos_dia
 
-def calcular_custo_hora_operador(salario: float, horas_mes: float) -> float:
+def calcular_custo_hora_operador(salario: float, fator_encargos: float) -> float:
     """
-    Custo por hora do operador
-    Fórmula: Salário / Horas trabalhadas no mês
+    Custo por hora do operador COM ENCARGOS
+    REGRA V2.0: Divisor 176h (não 220h)
+    Fórmula: (Salário × Fator de Encargos) ÷ 176
     """
-    return salario / horas_mes
+    return (salario * fator_encargos) / 176
 
-def calcular_custo_dia_absenteismo(salario: float, dias_ano: int) -> float:
+def calcular_custo_hora_parada(faturamento_mensal: float) -> float:
     """
-    Custo por dia de absenteísmo
-    Fórmula: (Salário × 12) / Dias de operação por ano
+    Custo de oportunidade da hora parada (Regra #3)
+    Fórmula: Faturamento Mensal ÷ 176 horas úteis
     """
-    return (salario * 12) / dias_ano
-
-def calcular_custo_material(custo_unitario: float, fracao_material: float) -> float:
-    """
-    Custo de material por peça
-    Fórmula: Custo unitário × Fração de material
-    """
-    return custo_unitario * fracao_material
+    if faturamento_mensal is None or faturamento_mensal == 0:
+        return 0.0
+    return faturamento_mensal / 176
 ```
 
-### CO - Custos Operacionais
+---
+
+### DOR 1: CUSTO ELEVADO DE MÃO DE OBRA
 
 ```python
-def calcular_co1_folha_pagamento(pessoas_expostas: int, salario: float, 
-                                 turnos_dia: int) -> float:
+def calcular_f01_mao_de_obra_direta(num_operadores: int, salario_medio: float,
+                                     fator_encargos: float) -> float:
     """
-    CO-1: Folha de Pagamento Direta
-    Fórmula: Pessoas × Salário × Turnos × 12
-    """
-    return pessoas_expostas * salario * turnos_dia * 12
-
-def calcular_co2_terceirizacao(volume: float, custo_unitario: float, 
-                                meses: int) -> float:
-    """
-    CO-2: Terceirização de Produção
-    Fórmula: Volume × Custo × Meses
-    """
-    return volume * custo_unitario * meses
-
-def calcular_co3_desperdicio(producao_anual: float, percentual_desperdicio: float,
-                             custo_material: float) -> float:
-    """
-    CO-3: Desperdício de Insumos
-    Fórmula: Produção anual × % desperdício × Custo material
-    """
-    return producao_anual * percentual_desperdicio * custo_material
-
-def calcular_co4_manutencao(paradas_mes: int, duracao_min: float, 
-                            custo_hora_parada: float) -> float:
-    """
-    CO-4: Manutenção Corretiva
-    Fórmula: (Paradas × Min / 60 × 12) × Custo hora parada
-    """
-    return (paradas_mes * duracao_min / 60 * 12) * custo_hora_parada
-```
-
-### QL - Qualidade
-
-```python
-def calcular_ql1_retrabalho(producao_anual: float, percentual_retrabalho: float,
-                           custo_peca: float, fator_retrabalho: float) -> float:
-    """
-    QL-1: Retrabalho Interno
-    Fórmula: Produção anual × % retrabalho × Custo peça × Fator retrabalho
-    """
-    return producao_anual * percentual_retrabalho * custo_peca * fator_retrabalho
-
-def calcular_ql2_refugo(producao_anual: float, percentual_scrap: float,
-                        custo_peca: float) -> float:
-    """
-    QL-2: Refugo / Scrap
-    Fórmula: Produção anual × % refugo × Custo peça
-    """
-    return producao_anual * percentual_scrap * custo_peca
-
-def calcular_ql3_inspecao(pessoas_inspecao: int, salario: float, 
-                         turnos_dia: int) -> float:
-    """
-    QL-3: Inspeção Manual 100%
-    Fórmula: Pessoas inspeção × Salário × Turnos × 12
-    """
-    return pessoas_inspecao * salario * turnos_dia * 12
-
-def calcular_ql4_logistica(producao_anual: float, percentual_retorno: float,
-                          custo_logistica: float) -> float:
-    """
-    QL-4: Logística Reversa / Garantias
-    Fórmula: Produção anual × % retorno × Custo logística
-    """
-    return producao_anual * percentual_retorno * custo_logistica
-
-def calcular_ql5_multas_qualidade(ocorrencias: int, multa_media: float) -> float:
-    """
-    QL-5: Multas Contratuais de Qualidade
-    Fórmula: Ocorrências × Multa média
-    """
-    return ocorrencias * multa_media
-```
-
-### SE - Segurança e Ergonomia
-
-```python
-def calcular_se1_absenteismo(dias_perdidos: int, custo_dia: float) -> float:
-    """
-    SE-1: Absenteísmo
-    Fórmula: Dias perdidos × Custo/dia
+    F01 (Revisada): Custo de Mão de Obra Direta Alocada ao Processo
     
-    Perfil de risco:
-    - Baixo: 0-3 faltas/ano
-    - Médio: 4-6 faltas/ano
-    - Alto: 7-12 faltas/ano
-    """
-    return dias_perdidos * custo_dia
-
-def calcular_se2_turnover(desligamentos: int, custo_rescisao: float) -> float:
-    """
-    SE-2: Turnover (Rotatividade)
-    Fórmula: Desligamentos × Custo rescisão
+    Fórmula: Nº Operadores × Salário Médio × Fator Encargos × 12 meses
     
-    Taxa por perfil:
-    - Baixo: 5%
-    - Médio: 10%
-    - Alto: 20%
+    Nota CFO: Custo ESPECÍFICO dos operadores passíveis de automação,
+    não a folha total. Fator 1,7 é conservador (encargos obrigatórios).
+    
+    Exemplos:
+    - Pequena (4 op, R$2.500): 4 × 2.500 × 1,7 × 12 = R$ 204.000
+    - Grande (20 op, R$3.200): 20 × 3.200 × 1,7 × 12 = R$ 1.305.600
     """
-    return desligamentos * custo_rescisao
+    return num_operadores * salario_medio * fator_encargos * 12
 
-def calcular_se3_treinamentos(desligamentos: int, custo_treinamento: float) -> float:
+def calcular_f02_horas_extras(num_operadores: int, media_he_mes: float,
+                              salario_medio: float, fator_encargos: float) -> float:
     """
-    SE-3: Treinamentos Recorrentes
-    Fórmula: Desligamentos × Custo treinamento
+    F02 (Revisada): O Custo Real das Horas Extras
+    
+    Fórmula: Nº Operadores × Média HE/Mês × Valor Hora com Encargos × 1,5 × 12
+    Valor Hora com Encargos = (Salário × Fator Encargos) / 176h
+    
+    CORREÇÃO V2.0: A fórmula original IGNORAVA encargos sobre HE.
+    Agora calcula o adicional de 50% sobre custo REAL da hora (salário + encargos).
+    Divisor 176h para aderência à realidade de alocação de custos.
+    
+    Exemplos:
+    - Pequena (4 op, R$2.500, 15 HE/mês): R$ 26.080
+    - Grande (20 op, R$3.200, 25 HE/mês): R$ 278.182
     """
-    return desligamentos * custo_treinamento
+    custo_hora = (salario_medio * fator_encargos) / 176
+    return num_operadores * media_he_mes * custo_hora * 1.5 * 12
 
-def calcular_se4_passivo_juridico(ocorrencias: int, provisao: float) -> float:
+def calcular_f03_curva_aprendizagem(num_contratacoes: int, salario_novato: float,
+                                     fator_encargos: float, meses_curva: int,
+                                     salario_supervisor: float,
+                                     pct_tempo_supervisor: float) -> float:
     """
-    SE-4: Passivo Jurídico / Multas
-    Fórmula: Ocorrências × Provisão
+    F03 (Revisada): O Custo da Curva de Aprendizagem
+    
+    Fórmula: Nº Contratações × [ (Salário Novato × Encargos × Meses Curva) 
+              + (Salário Supervisor × Encargos × % Tempo × Meses Curva) ]
+    
+    NOVO V2.0: Inclui custo do tempo do SUPERVISOR dedicado ao treinamento.
     """
-    return ocorrencias * provisao
+    custo_novato = salario_novato * fator_encargos * meses_curva
+    custo_supervisor = salario_supervisor * fator_encargos * pct_tempo_supervisor * meses_curva
+    return num_contratacoes * (custo_novato + custo_supervisor)
+
+def calcular_f04_turnover(num_desligamentos: int, salario_medio: float,
+                          fator_custo_turnover: float) -> float:
+    """
+    F04 (Revisada): O Custo Real do Turnover
+    
+    Fórmula: Nº Desligamentos × Salário × Fator de Custo de Turnover
+    
+    CORREÇÃO V2.0: Fator de Custo de Turnover (benchmark: 1,5 a 3,0) consolida:
+    - Custos de rescisão (multa 40% FGTS, aviso prévio)
+    - Recrutamento e seleção
+    - Admissão (exames, documentação)
+    - Produtividade perdida durante vaga aberta e treinamento
+    Usamos 1,5x como CONSERVADOR.
+    
+    Exemplos:
+    - Pequena (3 desl, R$2.500, 1,5x): R$ 11.250
+    - Grande (25 desl, R$3.200, 1,5x): R$ 120.000
+    """
+    return num_desligamentos * (salario_medio * fator_custo_turnover)
 ```
 
-### PR - Produtividade
+---
+
+### DOR 2: BAIXA QUALIDADE
 
 ```python
-def calcular_pr1_horas_extras(he_totais_mes: float, custo_hora: float,
-                              fator_he: float) -> float:
+def calcular_f05_refugo_retrabalho(producao_mensal: float,
+                                    pct_refugo: float, custo_mp_unidade: float,
+                                    pct_retrabalho: float, horas_retrab_unidade: float,
+                                    custo_hora_operador: float) -> tuple:
     """
-    PR-1: Horas Extras Recorrentes
-    Fórmula: HE totais/mês × 12 × Custo hora × Fator HE
+    F05 (Revisada): Custo do Refugo e do Retrabalho (SEPARADOS)
+    
+    Refugo = Produção Mensal × % Refugo × Custo MP/Unidade × 12
+    Retrabalho = Produção Mensal × % Retrabalho × Horas Retrab. × Custo Hora Operador × 12
+    
+    CORREÇÃO V2.0: Separa refugo (perda de material) de retrabalho (perda de MO).
+    Diagnóstico mais preciso da origem da perda.
+    
+    Retorna: (custo_refugo, custo_retrabalho, total)
     """
-    return he_totais_mes * 12 * custo_hora * fator_he
+    custo_refugo = producao_mensal * pct_refugo * custo_mp_unidade * 12
+    custo_retrabalho = producao_mensal * pct_retrabalho * horas_retrab_unidade * custo_hora_operador * 12
+    return (custo_refugo, custo_retrabalho, custo_refugo + custo_retrabalho)
 
-def calcular_pr2_headcount(pessoas_adicionais: int, custo_mensal: float) -> float:
+def calcular_f06_inspecao_manual(num_inspetores: int, salario_inspetor: float,
+                                 fator_encargos: float) -> float:
     """
-    PR-2: Aumento de Headcount
-    Fórmula: Pessoas × Custo mensal × 12
+    F06 (Mantida): Custo da Inspeção Manual de Qualidade
+    
+    Fórmula: Nº Inspetores × Salário × Fator Encargos × 12
+    
+    Nota CFO: Custo de "não qualidade" puro. Sistemas de visão fazem
+    100% de inspeção em linha sem custo incremental de MO.
     """
-    return pessoas_adicionais * custo_mensal * 12
+    return num_inspetores * salario_inspetor * fator_encargos * 12
 
-def calcular_pr3_vendas_perdidas(demanda_mes: float, margem_peca: float) -> float:
+def calcular_f07_escapes_qualidade(reclamacoes_ano: int,
+                                    custo_medio_reclamacao: float) -> float:
     """
-    PR-3: Vendas Perdidas (Custo de Oportunidade)
-    Fórmula: Demanda não atendida/mês × 12 × Margem
+    F07 (Revisada): Custo dos Escapes de Qualidade (Impacto no Cliente)
+    
+    Fórmula: Nº Reclamações/Ano × Custo Médio Real por Reclamação
+    
+    CORREÇÃO V2.0: O benchmark de R$300 era IRREALISTA para indústria.
+    Custo Real deve incluir: logística reversa, produto substituto,
+    MO para análise, multas contratuais, e risco de perda do cliente (LTV).
+    
+    Exemplos:
+    - Pequena (12 recl, R$2.000): R$ 24.000
+    - Grande (150 recl, R$15.000): R$ 2.250.000
     """
-    return demanda_mes * 12 * margem_peca
-
-def calcular_pr4_multas_atraso(ocorrencias: int, multa: float) -> float:
-    """
-    PR-4: Multas por Atraso
-    Fórmula: Ocorrências × Multa
-    """
-    return ocorrencias * multa
+    return reclamacoes_ano * custo_medio_reclamacao
 ```
+
+---
+
+### DOR 3: BAIXA PRODUTIVIDADE
+
+```python
+def calcular_f08_custo_oportunidade(faturamento_mensal: float,
+                                     pct_demanda_reprimida: float,
+                                     margem_contribuicao: float) -> float:
+    """
+    F08 (Mantida): Custo de Oportunidade (Gargalo de Faturamento)
+    
+    Fórmula: Faturamento Mensal × % Demanda Reprimida × Margem Contrib. × 12
+    
+    Nota CFO: Traduz ineficiência em perda DIRETA de crescimento.
+    Automação quebra o gargalo → captura receita adicional sem aumento
+    proporcional de custos fixos → alavanca margem.
+    """
+    return faturamento_mensal * pct_demanda_reprimida * margem_contribuicao * 12
+
+def calcular_f09_ociosidade_silenciosa(num_operadores: int, min_ociosos_dia: float,
+                                       custo_hora_operador: float,
+                                       dias_ano: int) -> float:
+    """
+    F09 (Revisada): Custo da Ociosidade Silenciosa
+    
+    Fórmula: Nº Operadores × (Min Ociosos / 60) × Custo Hora Operador × Dias/Ano
+    
+    Nota CFO: "Micro-tempos" de espera se somam. Custo de MO que não gera valor.
+    AGVs e automação logística garantem fluxo contínuo.
+    """
+    return num_operadores * (min_ociosos_dia / 60) * custo_hora_operador * dias_ano
+
+def calcular_f10_paradas_linha(paradas_mes: int, duracao_media_horas: float,
+                               custo_hora_parada: float) -> float:
+    """
+    F10 (Mantida): Custo das Paradas de Linha (Downtime)
+    
+    Fórmula: Nº Paradas/Mês × Duração Média (h) × Custo Hora Parada × 12
+    
+    Nota CFO: Usa Custo da Hora Parada (Regra #3) baseado em faturamento perdido.
+    Custo do downtime >> salários dos operadores parados.
+    Automação aumenta MTBF (Mean Time Between Failures).
+    """
+    return paradas_mes * duracao_media_horas * custo_hora_parada * 12
+
+def calcular_f11_setup_changeover(setups_mes: int, horas_setup: float,
+                                   custo_hora_parada: float) -> float:
+    """
+    F11 (Revisada): Custo do Setup / Changeover Manual
+    
+    Fórmula: Nº Setups/Mês × Horas/Setup × Custo Hora Parada × 12
+    
+    Nota CFO: Em ambientes High-Mix Low-Volume, setup é o maior
+    assassino de produtividade. SMED pode reduzir >90%.
+    """
+    return setups_mes * horas_setup * custo_hora_parada * 12
+```
+
+---
+
+### DOR 4: FALTA DE SEGURANÇA E ERGONOMIA
+
+```python
+def calcular_f12_riscos_acidentes(afastamentos_ano: int, custo_afastamento: float,
+                                   acidentes_ano: int, custo_acidente: float,
+                                   prob_processo: float,
+                                   custo_processo: float) -> tuple:
+    """
+    F12 (Revisada): Custo dos Riscos, Acidentes e Doenças Ocupacionais
+    
+    Fórmula: Custo Afastamentos + Custo Acidentes + Custo Risco Legal
+    - Afastamentos = Nº Afastamentos × Custo Médio
+    - Acidentes = Nº Acidentes com Lesão × Custo Médio
+    - Risco Legal = Probabilidade de Processo (%) × Custo Estimado
+    
+    V2.0: 3 componentes separados. Impacta FAP (Fator Acidentário de Prevenção)
+    que pode DOBRAR a alíquota RAT de toda a folha.
+    
+    Retorna: (custo_afastamentos, custo_acidentes, custo_legal, total)
+    """
+    c_afast = afastamentos_ano * custo_afastamento
+    c_acid = acidentes_ano * custo_acidente
+    c_legal = prob_processo * custo_processo
+    return (c_afast, c_acid, c_legal, c_afast + c_acid + c_legal)
+
+def calcular_f13_frota_empilhadeiras(num_empilhadeiras: int,
+                                      custo_operador: float,
+                                      custo_equipamento: float,
+                                      custo_energia: float,
+                                      custo_manutencao: float) -> float:
+    """
+    F13 (Revisada e Detalhada): Custo Real da Frota de Empilhadeiras
+    
+    Fórmula: Nº Empilhadeiras × (Operador + Equipamento + Energia + Manutenção) × 12
+    
+    CORREÇÃO PRINCIPAL V2.0: O custo do OPERADOR (salário + encargos) era IGNORADO.
+    Revela custo de inação 3 a 5 vezes MAIOR que o anteriormente calculado.
+    AGVs/AMRs eliminam a necessidade do operador dedicado.
+    """
+    custo_mensal_total = custo_operador + custo_equipamento + custo_energia + custo_manutencao
+    return num_empilhadeiras * custo_mensal_total * 12
+```
+
+---
+
+### DOR 5: CUSTOS OCULTOS DE GESTÃO E ESTRUTURA (NOVAS V2.0)
+
+```python
+def calcular_f14_supervisao(num_supervisores: int, salario_supervisor: float,
+                            fator_encargos: float) -> float:
+    """
+    F14 (NOVA): Custo da Supervisão e Gestão de Pessoas
+    
+    Fórmula: Nº Supervisores × Salário × Fator Encargos × 12
+    
+    Nota CFO: Processos automatizados são mais autônomos.
+    Supervisores podem ser realocados para melhoria contínua.
+    """
+    return num_supervisores * salario_supervisor * fator_encargos * 12
+
+def calcular_f15_compliance_epis(num_operadores: int, custo_epi_ano: float,
+                                  custo_exames_ano: float) -> float:
+    """
+    F15 (NOVA): Custo de Compliance, EPIs e Exames
+    
+    Fórmula: Nº Operadores × (Custo EPI/Ano + Custo Exames/Ano)
+    
+    Nota CFO: Multiplicado pelo headcount, EPIs e ASOs são custo fixo relevante.
+    Automação elimina ou reduz drasticamente.
+    """
+    return num_operadores * (custo_epi_ano + custo_exames_ano)
+
+def calcular_f16_energia(area_m2: float, custo_energia_m2_ano: float) -> float:
+    """
+    F16 (NOVA): Custo de Energia e Utilidades (Não-Produtivo)
+    
+    Fórmula: Área (m²) × Custo Energia/m²/Ano
+    
+    Nota CFO: Robôs não precisam de iluminação, AC ou ventilação complexa.
+    Custo de energia para ambiente humano seria reduzido em célula robotizada.
+    """
+    return area_m2 * custo_energia_m2_ano
+
+def calcular_f17_espaco_fisico(area_m2: float, custo_m2_ano: float,
+                                pct_reducao: float) -> float:
+    """
+    F17 (NOVA): Custo do Espaço Físico (Imobilizado)
+    
+    Fórmula: Área (m²) × Custo m²/Ano × % Redução com Automação
+    
+    Nota CFO: Operações automatizadas são mais compactas e verticais.
+    Espaço liberado = expansão de produção ou redução de custo fixo.
+    """
+    return area_m2 * custo_m2_ano * pct_reducao
+
+def calcular_f18_gestao_dados(num_pessoas: int, horas_dia: float,
+                               custo_hora_operador: float,
+                               dias_ano: int) -> float:
+    """
+    F18 (NOVA): Custo da Gestão Manual de Dados e Rastreabilidade
+    
+    Fórmula: Nº Pessoas × Horas/Dia × Custo Hora com Encargos × Dias/Ano
+    
+    Nota CFO: Coleta manual é lenta e propensa a erros.
+    Automação fornece OEE, Cpk em tempo real como subproduto da operação.
+    """
+    return num_pessoas * horas_dia * custo_hora_operador * dias_ano
+```
+
+---
 
 ### Indicadores Financeiros
 
@@ -594,41 +934,56 @@ def calcular_ganho_anual(custo_atual: float, meta_reducao: float) -> float:
 
 ## 🎨 INTERFACE DO USUÁRIO (ui/)
 
-### Fluxo de Telas
+### Fluxo de Telas V2.0
 
 ```
 1. Tela Inicial
-   ├── Título e descrição do projeto
+   ├── Título: "Calculadora do Custo da Inação"
+   ├── Conceito: "Quanto custa NÃO automatizar?"
    └── Botão "Nova Análise"
 
-2. Formulário de Dados Básicos
-   ├── Informações do Cliente
-   ├── Dados do Processo Atual
+2. Informações do Cliente
+   ├── Nome do Cliente / Projeto
+   ├── Seleção da Área de Atuação ARV (6 opções)
+   ├── Porte da Empresa (Pequena / Média / Grande)
+   ├── Seleção do Fator de Encargos (1,7 / 1,85 / 2,0)
    └── Botão "Próximo"
 
-3. Seleção de Dores
-   ├── Checkboxes por categoria (CO, QL, SE, PR)
+3. Dados do Processo Atual
+   ├── Produção (cadência ou volume mensal)
+   ├── Turnos, Horas, Dias
+   ├── Headcount (operadores, inspetores, supervisores)
+   ├── Salários médios
+   ├── Faturamento mensal da linha (para Custo Hora Parada)
    └── Botão "Próximo"
 
-4. Parâmetros Detalhados
-   ├── Campos condicionais baseados em dores selecionadas
+4. Seleção de Dores / Fórmulas
+   ├── Checkboxes organizados por 5 Dores
+   ├── Fórmulas PRÉ-SELECIONADAS com base na Área escolhida
+   ├── Usuário pode adicionar/remover fórmulas
    └── Botão "Próximo"
 
-5. Metas de Redução
-   ├── Sliders de % de redução para cada dor
+5. Parâmetros Detalhados
+   ├── Campos condicionais para cada fórmula selecionada
+   ├── Tooltips com "Nota do CFO" para cada campo
    └── Botão "Próximo"
 
-6. Investimento
+6. Metas de Redução
+   ├── Sliders de % de redução para cada fórmula selecionada
+   └── Botão "Próximo"
+
+7. Investimento
    ├── Valor mínimo e máximo
    └── Botão "Calcular"
 
-7. Dashboard de Resultados
-   ├── Métricas principais (Payback, ROI)
-   ├── Breakdown por categoria
-   ├── Gráficos (opcional)
+8. Dashboard de Resultados
+   ├── Métricas principais (Custo Total da Inação, Ganho Potencial, Payback, ROI)
+   ├── Breakdown por Dor (5 categorias)
+   ├── Breakdown detalhado por Fórmula (F01-F18)
+   ├── Tabela consolidada
    └── Botão "Gerar Apresentação"
 
-8. Download
+9. Download
    ├── Preview do PPTX
    └── Botão de download
 ```
@@ -636,136 +991,139 @@ def calcular_ganho_anual(custo_atual: float, meta_reducao: float) -> float:
 ### Componentes Principais (ui/forms.py)
 
 ```python
-def render_dados_basicos() -> ProcessoAtual:
-    """Renderiza formulário de dados básicos do processo"""
-    st.header("📊 Dados do Processo Atual")
+def render_info_cliente() -> ClienteBasicInfo:
+    """Renderiza formulário de informações do cliente (V2.0)"""
+    st.header("🏭 Informações do Cliente")
     
-    col1, col2 = st.columns(2)
+    nome_cliente = st.text_input("Nome do Cliente")
+    nome_projeto = st.text_input("Nome do Projeto")
     
-    with col1:
-        cadencia = st.number_input("Cadência de Produção (peças/min)", 
-                                   min_value=0.1, value=10.0)
-        horas_turno = st.number_input("Horas por Turno", 
-                                      min_value=1, value=8)
-        turnos_dia = st.number_input("Turnos por Dia", 
-                                     min_value=1, max_value=3, value=2)
-        dias_ano = st.number_input("Dias de Operação por Ano", 
-                                   min_value=1, max_value=365, value=250)
+    area = st.selectbox("Área de Atuação ARV", options=[
+        ("area_1_linhas_montagem", "🔧 Linhas de Montagem Automáticas"),
+        ("area_2_maquinas_especiais", "⚙️ Soluções em Máquinas Especiais"),
+        ("area_3_controle_qualidade", "🔍 Controle de Qualidade Automatizado"),
+        ("area_4_embalagem", "📦 Automação de Embalagem (Fim de Linha)"),
+        ("area_5_logistica_interna", "🚚 Automação de Logística Interna"),
+        ("area_6_robotica", "🤖 Soluções Robóticas Customizadas"),
+    ], format_func=lambda x: x[1])
     
-    with col2:
-        pessoas_processo = st.number_input("Pessoas no Processo por Turno", 
-                                          min_value=1, value=5)
-        pessoas_inspecao = st.number_input("Pessoas em Inspeção por Turno", 
-                                          min_value=0, value=1)
-        custo_peca = st.number_input("Custo Unitário da Peça (R$)", 
-                                    min_value=0.01, value=100.0)
-        fracao_material = st.slider("Fração de Material (%)", 
-                                    min_value=0, max_value=100, value=60) / 100
+    porte = st.selectbox("Porte da Empresa", ["Pequena", "Média", "Grande"])
     
-    return ProcessoAtual(...)
+    fator = st.selectbox("Fator de Encargos Trabalhistas", 
+                         options=list(FATOR_ENCARGOS_OPCOES.keys()))
+    
+    return ClienteBasicInfo(
+        nome_cliente=nome_cliente,
+        nome_projeto=nome_projeto,
+        area_atuacao=area[0],
+        porte_empresa=porte.lower(),
+        fator_encargos=FATOR_ENCARGOS_OPCOES[fator],
+    )
 
-def render_selecao_dores() -> DoresSelecionadas:
-    """Renderiza checkboxes de seleção de dores"""
+def render_selecao_dores(area_selecionada: str) -> DoresSelecionadas:
+    """
+    Renderiza checkboxes organizados por 5 Dores
+    PRÉ-SELECIONA fórmulas com base na Área de Atuação ARV
+    """
     st.header("🎯 Selecione as Dores Aplicáveis")
+    
+    formulas_sugeridas = AREAS_ARV[area_selecionada]["formulas_aplicaveis"]
+    st.info(f"Fórmulas pré-selecionadas para {AREAS_ARV[area_selecionada]['nome']}")
     
     dores = DoresSelecionadas()
     
-    with st.expander("💰 Custos Operacionais (CO)", expanded=True):
-        dores.co1_folha_pagamento = st.checkbox("CO-1: Folha de Pagamento Direta")
-        dores.co2_terceirizacao = st.checkbox("CO-2: Terceirização de Produção")
-        dores.co3_desperdicio = st.checkbox("CO-3: Desperdício de Insumos")
-        dores.co4_manutencao = st.checkbox("CO-4: Manutenção Corretiva")
+    with st.expander("💰 Dor 1: Custo Elevado de Mão de Obra", expanded=True):
+        dores.f01_mao_de_obra_direta = st.checkbox(
+            "F01: Mão de Obra Direta", value="F01" in formulas_sugeridas)
+        dores.f02_horas_extras = st.checkbox(
+            "F02: Horas Extras Recorrentes", value="F02" in formulas_sugeridas)
+        dores.f03_curva_aprendizagem = st.checkbox(
+            "F03: Curva de Aprendizagem", value="F03" in formulas_sugeridas)
+        dores.f04_turnover = st.checkbox(
+            "F04: Turnover (Rotatividade)", value="F04" in formulas_sugeridas)
     
-    # Repetir para QL, SE, PR...
+    with st.expander("🔍 Dor 2: Baixa Qualidade", expanded=True):
+        dores.f05_refugo_retrabalho = st.checkbox(
+            "F05: Refugo e Retrabalho", value="F05" in formulas_sugeridas)
+        dores.f06_inspecao_manual = st.checkbox(
+            "F06: Inspeção Manual", value="F06" in formulas_sugeridas)
+        dores.f07_escapes_qualidade = st.checkbox(
+            "F07: Escapes de Qualidade", value="F07" in formulas_sugeridas)
+    
+    with st.expander("📊 Dor 3: Baixa Produtividade", expanded=True):
+        dores.f08_custo_oportunidade = st.checkbox(
+            "F08: Custo de Oportunidade", value="F08" in formulas_sugeridas)
+        dores.f09_ociosidade_silenciosa = st.checkbox(
+            "F09: Ociosidade Silenciosa", value="F09" in formulas_sugeridas)
+        dores.f10_paradas_linha = st.checkbox(
+            "F10: Paradas de Linha", value="F10" in formulas_sugeridas)
+        dores.f11_setup_changeover = st.checkbox(
+            "F11: Setup / Changeover", value="F11" in formulas_sugeridas)
+    
+    with st.expander("⚠️ Dor 4: Segurança e Ergonomia", expanded=True):
+        dores.f12_riscos_acidentes = st.checkbox(
+            "F12: Riscos, Acidentes e Doenças", value="F12" in formulas_sugeridas)
+        dores.f13_frota_empilhadeiras = st.checkbox(
+            "F13: Frota de Empilhadeiras (TCO)", value="F13" in formulas_sugeridas)
+    
+    with st.expander("🧠 Dor 5: Custos Ocultos de Gestão", expanded=True):
+        dores.f14_supervisao = st.checkbox(
+            "F14: Supervisão e Gestão", value="F14" in formulas_sugeridas)
+        dores.f15_compliance_epis = st.checkbox(
+            "F15: Compliance, EPIs e Exames", value="F15" in formulas_sugeridas)
+        dores.f16_energia_utilidades = st.checkbox(
+            "F16: Energia e Utilidades", value="F16" in formulas_sugeridas)
+        dores.f17_espaco_fisico = st.checkbox(
+            "F17: Espaço Físico", value="F17" in formulas_sugeridas)
+        dores.f18_gestao_dados = st.checkbox(
+            "F18: Gestão Manual de Dados", value="F18" in formulas_sugeridas)
     
     return dores
-
-def render_parametros_detalhados(dores: DoresSelecionadas) -> ParametrosDetalhados:
-    """Renderiza campos condicionais baseados em dores selecionadas"""
-    st.header("🔧 Parâmetros Detalhados")
-    
-    params = ParametrosDetalhados()
-    
-    # Renderizar apenas para dores selecionadas
-    if dores.co2_terceirizacao:
-        st.subheader("CO-2: Terceirização")
-        params.volume_terceirizado = st.number_input("Volume Terceirizado")
-        params.custo_unitario_terceirizado = st.number_input("Custo Unitário")
-        params.meses_pico = st.number_input("Meses de Pico", value=12)
-    
-    # Repetir para todas as dores selecionadas...
-    
-    return params
-
-def render_metas_reducao(dores: DoresSelecionadas) -> MetasReducao:
-    """Renderiza sliders de meta de redução"""
-    st.header("🎯 Metas de Redução de Custos")
-    
-    metas = MetasReducao()
-    
-    if dores.co1_folha_pagamento:
-        metas.meta_co1 = st.slider("CO-1: Folha de Pagamento (%)", 
-                                   0, 100, 50) / 100
-    
-    # Repetir para todas as dores selecionadas...
-    
-    return metas
 ```
 
 ### Dashboard de Resultados (ui/dashboard.py)
 
 ```python
 def render_dashboard(resultados: ResultadosFinanceiros):
-    """Renderiza dashboard de resultados"""
+    """Renderiza dashboard de resultados V2.0"""
     
-    st.header("📈 Análise de Viabilidade Financeira")
+    st.header("📈 Análise do Custo da Inação")
     
     # Métricas principais
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Custo Total Anual", 
-                 f"R$ {resultados.custo_total_anual:,.2f}")
-    
+        st.metric("Custo Total da Inação (Anual)",
+                 f"R$ {resultados.custo_total_anual_inacao:,.2f}")
     with col2:
-        st.metric("Ganho Anual Potencial", 
+        st.metric("Ganho Anual Potencial",
                  f"R$ {resultados.ganho_anual_potencial:,.2f}")
-    
     with col3:
-        st.metric("Payback", 
-                 f"{resultados.payback_anos:.2f} anos")
-    
+        st.metric("Payback",
+                 f"{resultados.payback_anos:.1f} anos")
     with col4:
-        st.metric("ROI 3 Anos", 
-                 f"{resultados.roi_3_anos:.1f}%")
+        st.metric("ROI 3 Anos",
+                 f"{resultados.roi_3_anos:.0f}%")
     
-    # Breakdown por categoria
-    st.subheader("💸 Breakdown de Custos por Categoria")
+    # Breakdown por DOR (5 categorias)
+    st.subheader("💸 Custo da Inação por Dor")
     
-    col1, col2, col3, col4 = st.columns(4)
+    dores_data = {
+        "💰 Mão de Obra": resultados.total_dor1,
+        "🔍 Qualidade": resultados.total_dor2,
+        "📊 Produtividade": resultados.total_dor3,
+        "⚠️ Segurança": resultados.total_dor4,
+        "🧠 Custos Ocultos": resultados.total_dor5,
+    }
     
-    with col1:
-        st.metric("CO - Operacional", 
-                 f"R$ {resultados.total_co:,.2f}")
-        with st.expander("Detalhes"):
-            for key, value in resultados.breakdown_co.items():
-                st.write(f"**{key}:** R$ {value:,.2f}")
+    cols = st.columns(5)
+    for i, (dor, valor) in enumerate(dores_data.items()):
+        with cols[i]:
+            st.metric(dor, f"R$ {valor:,.2f}")
     
-    # Repetir para QL, SE, PR...
-    
-    # Tabela resumo
-    st.subheader("📊 Resumo Consolidado")
-    import pandas as pd
-    
-    df = pd.DataFrame({
-        'Categoria': ['CO', 'QL', 'SE', 'PR', 'TOTAL'],
-        'Custo Atual': [resultados.total_co, resultados.total_ql, 
-                       resultados.total_se, resultados.total_pr,
-                       resultados.custo_total_anual],
-        'Ganho Potencial': [...],  # Calcular baseado em metas
-    })
-    
-    st.dataframe(df, use_container_width=True)
+    # Breakdown detalhado por fórmula
+    st.subheader("📋 Detalhamento por Fórmula")
+    # Renderizar expanders com breakdown de cada dor...
 ```
 
 ---
@@ -774,10 +1132,11 @@ def render_dashboard(resultados: ResultadosFinanceiros):
 
 ### Estratégia
 
-1. **Template Base:** Usar `export/template.pptx` como base (copiar do arquivo original)
+1. **Template Base:** Usar `export/template.pptx` como base
 2. **Substituição de Tags:** Buscar e substituir `[PREENCHER]` com dados calculados
 3. **Preenchimento de Tabelas:** Preencher células de tabelas com valores
 4. **Formatação:** Manter formatação original (cores, fontes, layout)
+5. **Incluir "Nota do CFO"** nos slides de quantificação para linguagem executiva
 
 ### Estrutura
 
@@ -787,7 +1146,7 @@ from pptx.util import Pt
 from typing import Dict
 
 class PPTXGenerator:
-    """Gerador de apresentação PPTX customizada"""
+    """Gerador de apresentação PPTX customizada — V2.0"""
     
     def __init__(self, template_path: str):
         self.template_path = template_path
@@ -800,7 +1159,7 @@ class PPTXGenerator:
                           metas: MetasReducao,
                           investimento: InvestimentoAutomacao) -> str:
         """
-        Gera PPTX customizado baseado nos dados
+        Gera PPTX customizado baseado nos dados V2.0
         Retorna: caminho do arquivo gerado
         """
         self.prs = Presentation(self.template_path)
@@ -808,56 +1167,44 @@ class PPTXGenerator:
         # Slide 1: Capa
         self._preencher_capa(cliente)
         
-        # Slide 2-5: Dados do Cliente
+        # Slide 2-3: Dados do Cliente e Processo
         self._preencher_dados_cliente(cliente, processo)
         
-        # Slide 6: Análise Estratégica (dores selecionadas)
-        self._preencher_dores(...)
+        # Slide 4: Área de Atuação ARV selecionada
+        self._preencher_area_atuacao(cliente)
         
-        # Slide 7: Cenário Crítico
+        # Slide 5: Cenário Crítico (Custo Total da Inação)
         self._preencher_cenario_critico(resultados)
         
-        # Slides 8-11: Quantificação (CO, QL, SE, PR)
-        self._preencher_quantificacao(resultados, metas)
+        # Slides 6-10: Quantificação por Dor (5 Dores)
+        self._preencher_dor1(resultados)  # Mão de Obra
+        self._preencher_dor2(resultados)  # Qualidade
+        self._preencher_dor3(resultados)  # Produtividade
+        self._preencher_dor4(resultados)  # Segurança
+        self._preencher_dor5(resultados)  # Custos Ocultos
         
-        # Slide 12: Consolidação Financeira
+        # Slide 11: Consolidação Financeira
         self._preencher_consolidacao(resultados)
         
-        # Slide 13: Escopo Técnico (placeholder)
+        # Slide 12: Escopo Técnico (placeholder)
         self._preencher_escopo()
         
-        # Slide 14: Investimento
+        # Slide 13: Investimento
         self._preencher_investimento(investimento)
         
-        # Slide 15: Viabilidade (ROI, Payback)
+        # Slide 14: Viabilidade (ROI, Payback)
         self._preencher_viabilidade(resultados, investimento)
         
-        # Slide 16: Próximas Etapas (template padrão)
+        # Slide 15: Conclusão — "Da Despesa ao Investimento Estratégico"
+        self._preencher_conclusao()
+        
+        # Slide 16: Próximas Etapas
         
         # Salvar arquivo
-        output_path = f"analise_{cliente.nome_cliente}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
+        output_path = f"custo_inacao_{cliente.nome_cliente}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
         self.prs.save(output_path)
         
         return output_path
-    
-    def _substituir_texto_slide(self, slide, placeholders: Dict[str, str]):
-        """Substitui placeholders [PREENCHER] em um slide"""
-        for shape in slide.shapes:
-            if hasattr(shape, "text"):
-                for placeholder, valor in placeholders.items():
-                    if placeholder in shape.text:
-                        text_frame = shape.text_frame
-                        for paragraph in text_frame.paragraphs:
-                            for run in paragraph.runs:
-                                if placeholder in run.text:
-                                    run.text = run.text.replace(placeholder, valor)
-    
-    def _preencher_tabela(self, table, dados: Dict):
-        """Preenche células de uma tabela"""
-        # Implementar lógica de preenchimento de tabelas
-        pass
-    
-    # Métodos específicos para cada slide...
 ```
 
 ---
@@ -869,37 +1216,37 @@ class PPTXGenerator:
 - [ ] Configurar `requirements.txt`
 - [ ] Setup inicial do Streamlit (`app.py`)
 - [ ] Criar `.gitignore`
-- [ ] Configurar constantes em `config/constants.py`
+- [ ] Configurar constantes V2.0 em `config/constants.py`
+- [ ] Criar mapeamento de áreas em `config/areas.py`
 
-### Fase 2: Models e Core (2-3h)
-- [ ] Implementar schemas em `models/`
-- [ ] Implementar fórmulas em `core/formulas.py`
-- [ ] Implementar calculator em `core/calculator.py`
+### Fase 2: Models e Core (3-4h)
+- [ ] Implementar schemas V2.0 em `models/`
+- [ ] Implementar 18 fórmulas (F01-F18) em `core/formulas.py`
+- [ ] Implementar calculator V2.0 em `core/calculator.py`
 - [ ] Criar validadores em `core/validators.py`
-- [ ] Testes unitários de fórmulas
+- [ ] Testes unitários de fórmulas (exemplos do PDF para validação)
 
 ### Fase 3: Interface (3-4h)
-- [ ] Implementar formulário de dados básicos
-- [ ] Implementar seleção de dores
-- [ ] Implementar parâmetros detalhados (condicionais)
-- [ ] Implementar metas de redução
+- [ ] Implementar seleção de Área ARV + Fator Encargos
+- [ ] Implementar formulário de dados básicos (V2.0)
+- [ ] Implementar seleção de dores com pré-seleção por Área
+- [ ] Implementar parâmetros detalhados condicionais (18 fórmulas)
+- [ ] Implementar metas de redução por fórmula
 - [ ] Implementar formulário de investimento
-- [ ] Implementar dashboard de resultados
+- [ ] Implementar dashboard V2.0 (breakdown por 5 Dores)
 - [ ] Aplicar CSS customizado
 
 ### Fase 4: Geração de PPTX (3-4h)
-- [ ] Preparar template.pptx base
-- [ ] Implementar PPTXGenerator
-- [ ] Implementar substituição de texto
-- [ ] Implementar preenchimento de tabelas
-- [ ] Implementar preenchimento de cada slide (1-16)
+- [ ] Preparar template.pptx base V2.0
+- [ ] Implementar PPTXGenerator V2.0
+- [ ] Slides de quantificação por Dor (5 slides)
+- [ ] Incluir "Nota do CFO" nos slides
 - [ ] Testar geração completa
 
 ### Fase 5: Integração e Testes (1-2h)
 - [ ] Integrar fluxo completo
+- [ ] Validar com exemplos do PDF (Pequena vs Grande Empresa)
 - [ ] Testes end-to-end
-- [ ] Validação de outputs
-- [ ] Ajustes de UX
 - [ ] Tratamento de erros
 
 ### Fase 6: Deploy (30min)
@@ -914,35 +1261,25 @@ class PPTXGenerator:
 
 ### Setup Local
 ```bash
-# Criar ambiente virtual
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 
-# Instalar dependências
 pip install -r requirements.txt
-
-# Rodar aplicação
 streamlit run app.py
 ```
 
 ### Testes
 ```bash
-# Rodar testes
 pytest tests/
-
-# Com coverage
 pytest --cov=. tests/
 ```
 
 ### Deploy
 ```bash
-# Push para GitHub
 git add .
-git commit -m "Deploy MVP"
+git commit -m "Deploy MVP V2.0"
 git push origin main
-
-# Streamlit Cloud irá detectar automaticamente
 ```
 
 ---
@@ -956,50 +1293,68 @@ git push origin main
 - Dias/ano: 1-365
 - Valores monetários >= 0
 - Percentuais: 0-100%
+- Fator de Encargos: 1.7 / 1.85 / 2.0
 
 ### Tratamento de Erros
-- Divisão por zero nos cálculos
+- Divisão por zero nos cálculos (especialmente Payback)
 - Campos obrigatórios não preenchidos
 - Valores fora de range
 - Erro na geração de PPTX
+- Faturamento mensal = 0 (Custo Hora Parada indefinido)
 
 ### Performance
 - Cálculos são instantâneos (aritmética simples)
 - Geração de PPTX pode levar 2-5s
 - Usar `st.spinner()` para feedback visual
 
+### Exemplos de Validação (do PDF V2.0)
+
+| Fórmula | Cenário | Inputs | Resultado Esperado |
+|---------|---------|--------|-------------------|
+| F01 | Pequena | 4 op, R$2.500, 1,7 | R$ 204.000 |
+| F01 | Grande | 20 op, R$3.200, 1,7 | R$ 1.305.600 |
+| F04 | Pequena | 3 desl, R$2.500, 1,5x | R$ 11.250 |
+| F04 | Grande | 25 desl, R$3.200, 1,5x | R$ 120.000 |
+| F07 | Pequena | 12 recl, R$2.000 | R$ 24.000 |
+| F07 | Grande | 150 recl, R$15.000 | R$ 2.250.000 |
+
 ### Melhorias Futuras (Pós-MVP)
 - Persistência em banco de dados
 - Autenticação de usuários
 - Versionamento de análises
-- Comparação entre cenários
+- Comparação entre cenários (Pequena vs Grande Empresa)
 - Gráficos interativos (Plotly)
 - Export para PDF
 - Compartilhamento por link
-- Templates customizáveis
+- Templates customizáveis por Área ARV
 - API REST para integração
+- Simulação de cenários (otimista / conservador / pessimista)
 
 ---
 
 ## 🎯 PRIORIDADES
 
 ### P0 (Crítico - MVP)
-1. Fluxo completo de input → cálculo → output
-2. Geração de PPTX funcional
-3. Dashboard de resultados claro
-4. Deploy funcionando
+1. Motor de cálculo V2.0 com 18 fórmulas (F01-F18)
+2. Fluxo completo: Área ARV → Dores → Cálculo → Dashboard → PPTX
+3. Constantes corretas (Fator 1,7 / Divisor 176h)
+4. Dashboard com breakdown por 5 Dores
+5. Geração de PPTX funcional
+6. Deploy funcionando
 
 ### P1 (Importante - Pós-MVP)
 1. Validações robustas
-2. Mensagens de erro amigáveis
-3. UX polido
-4. Documentação completa
+2. Tooltips com "Nota do CFO" em cada campo
+3. Pré-seleção inteligente de fórmulas por Área
+4. UX polido
+5. Documentação completa
 
 ### P2 (Nice to Have)
-1. Gráficos visuais
-2. Comparação de cenários
+1. Gráficos visuais (Plotly)
+2. Comparação de cenários por porte
 3. Export para PDF
 4. Temas customizáveis
+5. Exemplos pré-carregados (Pequena vs Grande)
 
 ---
 
@@ -1008,9 +1363,11 @@ git push origin main
 - **Documentação Streamlit:** https://docs.streamlit.io
 - **Documentação python-pptx:** https://python-pptx.readthedocs.io
 - **Streamlit Cloud:** https://streamlit.io/cloud
+- **Documento Base:** "Custo da Inação V2.0 Revisado" (PDF ARV Systems)
 
 ---
 
-**Última atualização:** 2026-01-27  
-**Versão:** 1.0 (MVP)  
+**Última atualização:** 2026-02-24
+**Versão:** 2.0 (MVP — Motor de Cálculo V2.0)
 **Status:** Pronto para desenvolvimento
+**Base:** Documento "Custo da Inação V2.0 Revisado" — ARV Systems

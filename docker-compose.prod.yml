@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  roi-calculator:
+    # IMAGE é injetada pelo CI/CD no `docker stack deploy`
+    image: ${IMAGE:-ghcr.io/brunerars/roi-calculator:latest}
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.roi-calculator.rule=Host(`roi-calculator.arvsystems.cloud`)
+        - traefik.http.routers.roi-calculator.entrypoints=websecure
+        - traefik.http.routers.roi-calculator.tls.certresolver=letsencryptresolver
+        - traefik.http.services.roi-calculator.loadbalancer.server.port=8501
+        - traefik.http.routers.roi-calculator.service=roi-calculator
+
+networks:
+  network_public:
+    external: true
+

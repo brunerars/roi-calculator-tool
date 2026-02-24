@@ -1,116 +1,171 @@
 """
-Schemas de entrada de dados do cliente
+Schemas de entrada de dados do cliente — V2.0 (Custo da Inação).
 """
+
 from dataclasses import dataclass
 from typing import Optional
 
 
 @dataclass
 class ClienteBasicInfo:
-    """Informações básicas do cliente"""
+    """Informações básicas do cliente (V2.0)."""
+
     nome_cliente: str
     nome_projeto: str
-    nivel_automacao: str  # "Manual", "Semiautomatizado", "Automatizado"
+    area_atuacao: str  # chave em `config.areas.AREAS_ARV`
+    porte_empresa: str  # "pequena" | "media" | "grande"
+    fator_encargos: float = 1.7  # 1.7 / 1.85 / 2.0
 
 
 @dataclass
 class ProcessoAtual:
-    """Dados do processo atual do cliente"""
-    cadencia_producao: float  # peças/min
-    horas_por_turno: float  # h
-    turnos_por_dia: int  # turnos
-    dias_operacao_ano: int  # dias
-    pessoas_processo_turno: int  # pessoas
-    pessoas_inspecao_turno: int  # pessoas
-    custo_unitario_peca: float  # R$
-    fracao_material: float  # % (0.6 = 60%)
+    """Dados do processo atual (V2.0)."""
+
+    # Produção
+    cadencia_producao: Optional[float] = None  # peças/min (alternativa à produção mensal)
+    producao_mensal: Optional[float] = None  # peças/mês
+    horas_por_turno: float = 8.0
+    turnos_por_dia: int = 2
+    dias_operacao_ano: int = 250
+
+    # Pessoas
+    pessoas_processo_turno: int = 5
+    pessoas_inspecao_turno: int = 1
+
+    # Custos (salários brutos)
+    salario_medio_operador: float = 2500.0
+    salario_medio_inspetor: float = 3000.0
+    salario_medio_supervisor: float = 5000.0
+
+    # Custos unitários
+    custo_unitario_peca: float = 100.0  # R$
+    custo_materia_prima_peca: float = 15.0  # R$ (custo MP direto por unidade)
+
+    # Financeiro da linha (para custo hora parada)
+    faturamento_mensal_linha: Optional[float] = None  # R$
 
 
 @dataclass
 class DoresSelecionadas:
-    """Dores/custos selecionados pelo usuário"""
-    # Custos Operacionais
-    co1_folha_pagamento: bool = False
-    co2_terceirizacao: bool = False
-    co3_desperdicio: bool = False
-    co4_manutencao: bool = False
+    """
+    Dores/Fórmulas selecionadas — V2.0.
+    Flags mapeiam para F01–F18.
+    """
 
-    # Qualidade
-    ql1_retrabalho: bool = False
-    ql2_refugo: bool = False
-    ql3_inspecao_manual: bool = False
-    ql4_logistica_reversa: bool = False
-    ql5_multas_qualidade: bool = False
+    # DOR 1: CUSTO ELEVADO DE MÃO DE OBRA
+    f01_mao_de_obra_direta: bool = False
+    f02_horas_extras: bool = False
+    f03_curva_aprendizagem: bool = False
+    f04_turnover: bool = False
 
-    # Segurança/Ergonomia
-    se1_absenteismo: bool = False
-    se2_turnover: bool = False
-    se3_treinamentos: bool = False
-    se4_passivo_juridico: bool = False
+    # DOR 2: BAIXA QUALIDADE
+    f05_refugo_retrabalho: bool = False
+    f06_inspecao_manual: bool = False
+    f07_escapes_qualidade: bool = False
 
-    # Produtividade
-    pr1_horas_extras: bool = False
-    pr2_headcount: bool = False
-    pr3_vendas_perdidas: bool = False
-    pr4_multas_atraso: bool = False
+    # DOR 3: BAIXA PRODUTIVIDADE
+    f08_custo_oportunidade: bool = False
+    f09_ociosidade_silenciosa: bool = False
+    f10_paradas_linha: bool = False
+    f11_setup_changeover: bool = False
+
+    # DOR 4: FALTA DE SEGURANÇA E ERGONOMIA
+    f12_riscos_acidentes: bool = False
+    f13_frota_empilhadeiras: bool = False  # específica da Área 5
+
+    # DOR 5: CUSTOS OCULTOS DE GESTÃO E ESTRUTURA
+    f14_supervisao: bool = False
+    f15_compliance_epis: bool = False
+    f16_energia_utilidades: bool = False
+    f17_espaco_fisico: bool = False
+    f18_gestao_dados: bool = False
 
 
 @dataclass
 class ParametrosDetalhados:
-    """Parâmetros detalhados para cálculos específicos"""
-    # CO-2
-    volume_terceirizado: Optional[float] = None
-    custo_unitario_terceirizado: Optional[float] = None
-    meses_pico: Optional[int] = None
+    """Parâmetros detalhados por fórmula (V2.0)."""
 
-    # CO-3
-    percentual_desperdicio: Optional[float] = None  # %
+    # F02 - Horas Extras
+    f02_media_he_mes_por_pessoa: Optional[float] = None  # HE/mês/pessoa
 
-    # CO-4
-    paradas_nao_planejadas_mes: Optional[int] = None
-    duracao_media_parada_min: Optional[float] = None
+    # F03 - Curva de Aprendizagem
+    f03_novas_contratacoes_ano: Optional[int] = None
+    f03_salario_novato: Optional[float] = None  # R$
+    f03_meses_curva: Optional[int] = None  # meses
+    f03_salario_supervisor: Optional[float] = None  # R$
+    f03_percentual_tempo_supervisor: Optional[float] = None  # fração (0–1)
 
-    # QL-1
-    percentual_retrabalho: Optional[float] = None  # %
-    fator_retrabalho: Optional[float] = None  # 0.2 = 20%
+    # F04 - Turnover
+    f04_desligamentos_ano: Optional[int] = None
+    f04_fator_custo_turnover: Optional[float] = 1.5  # 1,5 a 3,0
 
-    # QL-2
-    percentual_scrap: Optional[float] = None  # %
+    # F05 - Refugo e Retrabalho
+    f05_percentual_refugo: Optional[float] = None  # fração (0–1)
+    f05_percentual_retrabalho: Optional[float] = None  # fração (0–1)
+    f05_horas_retrabalho_por_unidade: Optional[float] = None  # h/unidade
 
-    # QL-4
-    percentual_retorno_garantia: Optional[float] = None  # %
+    # F07 - Escapes de Qualidade
+    f07_reclamacoes_clientes_ano: Optional[int] = None
+    f07_custo_medio_por_reclamacao: Optional[float] = None  # R$
 
-    # QL-5
-    ocorrencias_multa_ano: Optional[int] = None
+    # F08 - Custo de Oportunidade
+    f08_percentual_demanda_reprimida: Optional[float] = None  # fração (0–1)
+    f08_margem_contribuicao: Optional[float] = None  # fração (0–1)
 
-    # SE-1
-    perfil_risco_absenteismo: Optional[str] = None  # "baixo", "medio", "alto"
-    dias_perdidos_ano: Optional[int] = None
+    # F09 - Ociosidade Silenciosa
+    f09_minutos_ociosos_por_dia: Optional[float] = None  # min/dia
 
-    # SE-2
-    perfil_risco_turnover: Optional[str] = None  # "baixo", "medio", "alto"
-    desligamentos_ano: Optional[int] = None
+    # F10 - Paradas de Linha
+    f10_paradas_mes: Optional[int] = None
+    f10_duracao_media_parada_horas: Optional[float] = None  # h
+    f10_custo_hora_parada: Optional[float] = None  # R$/h (Regra #3)
 
-    # SE-4
-    ocorrencias_processo_ano: Optional[int] = None
+    # F11 - Setup/Changeover
+    f11_setups_mes: Optional[int] = None
+    f11_horas_por_setup: Optional[float] = None  # h
+    f11_custo_hora_parada: Optional[float] = None  # R$/h (Regra #3)
 
-    # PR-1
-    horas_extras_mes_pessoa: Optional[float] = None
+    # F12 - Riscos, Acidentes e Doenças
+    f12_afastamentos_ano: Optional[int] = None
+    f12_custo_medio_afastamento: Optional[float] = None  # R$
+    f12_acidentes_com_lesao_ano: Optional[int] = None
+    f12_custo_medio_acidente: Optional[float] = None  # R$
+    f12_probabilidade_processo: Optional[float] = None  # fração (0–1)
+    f12_custo_estimado_processo: Optional[float] = None  # R$
 
-    # PR-2
-    pessoas_adicionais: Optional[int] = None
+    # F13 - Frota de Empilhadeiras (TCO)
+    f13_num_empilhadeiras: Optional[int] = None
+    f13_custo_operador_mes: Optional[float] = None  # R$
+    f13_custo_equipamento_mes: Optional[float] = None  # R$
+    f13_custo_energia_mes: Optional[float] = None  # R$
+    f13_custo_manutencao_mes: Optional[float] = None  # R$
 
-    # PR-3
-    demanda_nao_atendida_mes: Optional[float] = None
-    margem_por_peca: Optional[float] = None
+    # F14 - Supervisão
+    f14_num_supervisores: Optional[int] = None
+    f14_salario_supervisor: Optional[float] = None  # R$
 
-    # PR-4
-    ocorrencias_atraso_ano: Optional[int] = None
+    # F15 - Compliance/EPIs
+    f15_custo_epi_ano_por_pessoa: Optional[float] = None  # R$
+    f15_custo_exames_ano_por_pessoa: Optional[float] = None  # R$
+
+    # F16 - Energia/Utilidades
+    f16_area_operacao_m2: Optional[float] = None  # m²
+    f16_custo_energia_m2_ano: Optional[float] = None  # R$/m²/ano
+
+    # F17 - Espaço Físico
+    f17_area_m2: Optional[float] = None  # m²
+    f17_custo_m2_ano: Optional[float] = None  # R$/m²/ano
+    f17_percentual_reducao_automacao: Optional[float] = None  # fração (0–1)
+
+    # F18 - Gestão de Dados
+    f18_pessoas_envolvidas: Optional[int] = None
+    f18_horas_dia_tarefas_dados: Optional[float] = None  # h/dia
 
 
 @dataclass
 class InvestimentoAutomacao:
-    """Dados de investimento da automação"""
+    """Dados de investimento da automação (V2.0)."""
+
     valor_investimento_min: float  # R$
     valor_investimento_max: float  # R$
 

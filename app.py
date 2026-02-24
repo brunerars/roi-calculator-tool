@@ -14,11 +14,16 @@ from ui.forms import (
 )
 from ui.dashboard import render_dashboard
 from core.calculator import ROICalculator
-from core.validators import validar_processo_atual, validar_investimento
+from core.validators import (
+    validar_cliente,
+    validar_investimento,
+    validar_parametros_detalhados,
+    validar_processo_atual,
+)
 from export.pptx_generator import PPTXGenerator
 
 st.set_page_config(
-    page_title="ROI Calculator - Automação Industrial",
+    page_title="Calculadora do Custo da Inação",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -68,22 +73,22 @@ def main():
 
     # --- Tela Inicial ---
     if etapa == 0:
-        st.title("📊 ROI Calculator")
-        st.subheader("Análise de Viabilidade Financeira para Automação Industrial")
+        st.title("📉 Calculadora do Custo da Inação")
+        st.subheader("Quanto custa NÃO automatizar?")
         st.markdown("---")
         st.markdown(
             """
-            Quantifique rapidamente o retorno sobre investimento (ROI) de projetos
-            de automação industrial.
+            Quantifique rapidamente o **Custo da Inação** em processos industriais e
+            gere uma apresentação executiva em minutos.
 
             **Fluxo da análise:**
-            1. Informações do cliente e processo atual
-            2. Seleção das dores aplicáveis
-            3. Parâmetros detalhados
-            4. Metas de redução de custos
-            5. Investimento da automação
-            6. Dashboard de resultados
-            7. Geração de apresentação PPTX
+            1. Informações do cliente + processo atual
+            2. Seleção das dores/fórmulas (pré-seleção por área ARV)
+            3. Parâmetros detalhados por fórmula
+            4. Metas de redução
+            5. Investimento
+            6. Dashboard
+            7. PPTX
             """
         )
         if st.button("Nova Análise", type="primary", use_container_width=True):
@@ -92,14 +97,14 @@ def main():
         return
 
     # --- Etapas do fluxo ---
-    st.title("📊 ROI Calculator")
+    st.title("📉 Calculadora do Custo da Inação")
     _render_progress(etapa)
     st.markdown("---")
 
     # Etapa 1: Dados Básicos
     if etapa == 1:
         cliente, processo = render_dados_basicos()
-        erros = validar_processo_atual(processo)
+        erros = validar_cliente(cliente) + validar_processo_atual(processo)
         if erros:
             for e in erros:
                 st.error(e)
@@ -110,18 +115,31 @@ def main():
 
     # Etapa 2: Seleção de Dores
     elif etapa == 2:
-        dores = render_selecao_dores()
-        st.session_state["dores"] = dores
+        cliente = st.session_state.get("cliente")
+        if cliente is None:
+            st.warning("Volte à etapa 1 e preencha os dados do cliente.")
+        else:
+            dores = render_selecao_dores(cliente.area_atuacao)
+            st.session_state["dores"] = dores
         _nav_buttons(etapa)
 
     # Etapa 3: Parâmetros Detalhados
     elif etapa == 3:
         dores = st.session_state.get("dores")
+        cliente = st.session_state.get("cliente")
+        processo = st.session_state.get("processo")
         if dores is None:
             st.warning("Volte à etapa 2 e selecione as dores.")
+        elif cliente is None or processo is None:
+            st.warning("Volte à etapa 1 e preencha os dados básicos.")
         else:
-            parametros = render_parametros_detalhados(dores)
-            st.session_state["parametros"] = parametros
+            parametros = render_parametros_detalhados(dores, processo=processo, cliente=cliente)
+            erros = validar_parametros_detalhados(parametros, dores)
+            if erros:
+                for e in erros:
+                    st.error(e)
+            else:
+                st.session_state["parametros"] = parametros
         _nav_buttons(etapa)
 
     # Etapa 4: Metas de Redução
@@ -167,7 +185,7 @@ def _render_exportar():
         st.warning("Dados incompletos. Volte e preencha todas as etapas anteriores.")
         return
 
-    st.success("Apresentação pronta para ser gerada com 16 slides customizados.")
+    st.success("Apresentação pronta para ser gerada com 16+ slides customizados.")
 
     if st.button("Gerar Apresentação PPTX", type="primary", use_container_width=True):
         with st.spinner("Gerando apresentação..."):
@@ -199,7 +217,7 @@ def _render_exportar():
 
 def _run_calculo_e_dashboard():
     """Executa o cálculo e renderiza o dashboard."""
-    required_keys = ["processo", "dores", "parametros", "investimento", "metas"]
+    required_keys = ["cliente", "processo", "dores", "parametros", "investimento", "metas"]
     missing = [k for k in required_keys if k not in st.session_state]
 
     if missing:
@@ -208,6 +226,7 @@ def _run_calculo_e_dashboard():
 
     try:
         calc = ROICalculator(
+            cliente=st.session_state["cliente"],
             processo=st.session_state["processo"],
             dores=st.session_state["dores"],
             parametros=st.session_state["parametros"],

@@ -9,7 +9,6 @@ from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-from pptx.enum.chart import XL_CHART_TYPE
 
 from models.inputs import (
     ClienteBasicInfo,
@@ -56,14 +55,15 @@ class PPTXGenerator:
         self._slide_02_agenda()
         self._slide_03_contexto(cliente)
         self._slide_04_processo_atual(processo)
-        self._slide_05_dados_operacionais(processo)
+        self._slide_05_dados_operacionais(processo, cliente)
         self._slide_06_analise_estrategica(dores)
         self._slide_07_cenario_critico(resultados)
-        self._slide_08_custos_operacionais(resultados)
-        self._slide_09_custos_qualidade(resultados)
-        self._slide_10_custos_seguranca(resultados)
-        self._slide_11_custos_produtividade(resultados)
-        self._slide_12_consolidacao(resultados)
+        self._slide_08_custos_operacionais(resultados)  # Dor 1
+        self._slide_09_custos_qualidade(resultados)  # Dor 2
+        self._slide_10_custos_seguranca(resultados)  # Dor 3
+        self._slide_11_custos_produtividade(resultados)  # Dor 4
+        self._slide_12_custos_ocultos(resultados)  # Dor 5
+        self._slide_13_consolidacao(resultados)
         self._slide_13_escopo_tecnico()
         self._slide_14_investimento(investimento)
         self._slide_15_viabilidade(resultados, investimento)
@@ -212,14 +212,14 @@ class PPTXGenerator:
         # Título principal
         self._add_textbox(
             slide, Inches(1), Inches(2), Inches(11), Inches(1),
-            "Análise de Viabilidade Financeira",
+            "Análise do Custo da Inação",
             font_size=40, bold=True, color=BRANCO, alignment=PP_ALIGN.CENTER,
         )
 
         # Subtítulo
         self._add_textbox(
             slide, Inches(1), Inches(3.2), Inches(11), Inches(0.6),
-            "Automação Industrial — Estudo de ROI",
+            "Quanto custa NÃO automatizar?",
             font_size=24, color=AZUL_CLARO, alignment=PP_ALIGN.CENTER,
         )
 
@@ -280,25 +280,43 @@ class PPTXGenerator:
         self._add_textbox(
             slide, Inches(0.8), Inches(1.8), Inches(11.5), Inches(1),
             f"O presente estudo tem como objetivo quantificar o impacto financeiro "
-            f"dos custos operacionais atuais do processo de {cliente.nome_projeto} "
-            f"e demonstrar a viabilidade do investimento em automação industrial.",
+            f"do Custo da Inação no processo de {cliente.nome_projeto} "
+            f"e apoiar a decisão de investimento em automação industrial.",
             font_size=16, color=CINZA_ESCURO,
         )
 
         self._add_textbox(
             slide, Inches(0.8), Inches(3.2), Inches(5), Inches(0.4),
-            "Nível de automação atual:", font_size=14, bold=True, color=AZUL_ESCURO,
+            "Área de atuação ARV:", font_size=14, bold=True, color=AZUL_ESCURO,
         )
         self._add_textbox(
             slide, Inches(6), Inches(3.2), Inches(5), Inches(0.4),
-            cliente.nivel_automacao, font_size=14, color=CINZA_ESCURO,
+            cliente.area_atuacao, font_size=14, color=CINZA_ESCURO,
         )
 
         self._add_textbox(
-            slide, Inches(0.8), Inches(4.2), Inches(11.5), Inches(1.5),
+            slide, Inches(0.8), Inches(3.8), Inches(5), Inches(0.4),
+            "Porte da empresa:", font_size=14, bold=True, color=AZUL_ESCURO,
+        )
+        self._add_textbox(
+            slide, Inches(6), Inches(3.8), Inches(5), Inches(0.4),
+            cliente.porte_empresa, font_size=14, color=CINZA_ESCURO,
+        )
+
+        self._add_textbox(
+            slide, Inches(0.8), Inches(4.4), Inches(5), Inches(0.4),
+            "Fator de encargos:", font_size=14, bold=True, color=AZUL_ESCURO,
+        )
+        self._add_textbox(
+            slide, Inches(6), Inches(4.4), Inches(5), Inches(0.4),
+            f"{cliente.fator_encargos:.2f}x", font_size=14, color=CINZA_ESCURO,
+        )
+
+        self._add_textbox(
+            slide, Inches(0.8), Inches(5.1), Inches(11.5), Inches(1.3),
             "Metodologia:\n"
             "• Levantamento de dados operacionais junto ao cliente\n"
-            "• Quantificação de 4 categorias de custos (17 subcategorias)\n"
+            "• Quantificação por 5 Dores e 18 fórmulas (F01–F18)\n"
             "• Definição de metas de redução com automação\n"
             "• Cálculo de ROI e payback do investimento",
             font_size=14, color=CINZA_ESCURO,
@@ -308,15 +326,21 @@ class PPTXGenerator:
         slide = self._add_slide()
         self._add_title_bar(slide, "Processo Atual — Parâmetros de Produção")
 
+        prod_txt = (
+            f"{processo.producao_mensal:,.0f} peças/mês" if processo.producao_mensal is not None
+            else f"{processo.cadencia_producao} peças/min"
+        )
+
         dados = [
-            ("Cadência de Produção", f"{processo.cadencia_producao} peças/min"),
+            ("Produção informada", prod_txt),
             ("Horas por Turno", f"{processo.horas_por_turno}h"),
             ("Turnos por Dia", str(processo.turnos_por_dia)),
             ("Dias de Operação por Ano", str(processo.dias_operacao_ano)),
-            ("Pessoas no Processo (por turno)", str(processo.pessoas_processo_turno)),
-            ("Pessoas em Inspeção (por turno)", str(processo.pessoas_inspecao_turno)),
-            ("Custo Unitário da Peça", self._fmt(processo.custo_unitario_peca)),
-            ("Fração de Material", self._fmt_pct(processo.fracao_material * 100)),
+            ("Operadores no Processo (por turno)", str(processo.pessoas_processo_turno)),
+            ("Inspetores (por turno)", str(processo.pessoas_inspecao_turno)),
+            ("Salário Médio Operador", self._fmt(processo.salario_medio_operador)),
+            ("Custo Matéria-Prima/Peça", self._fmt(processo.custo_materia_prima_peca)),
+            ("Faturamento Mensal da Linha", self._fmt(processo.faturamento_mensal_linha or 0.0)),
         ]
 
         table_data = [["Parâmetro", "Valor"]] + [[d[0], d[1]] for d in dados]
@@ -326,20 +350,20 @@ class PPTXGenerator:
             col_widths=[Inches(5.5), Inches(3.5)],
         )
 
-    def _slide_05_dados_operacionais(self, processo: ProcessoAtual):
+    def _slide_05_dados_operacionais(self, processo: ProcessoAtual, cliente: ClienteBasicInfo):
         slide = self._add_slide()
-        self._add_title_bar(slide, "Dados Operacionais Calculados")
+        self._add_title_bar(slide, "Bases de Cálculo (V2.0)")
 
-        prod_anual = (
-            processo.cadencia_producao * 60
-            * processo.horas_por_turno * processo.turnos_por_dia
-            * processo.dias_operacao_ano
-        )
-        horas_anuais = (
-            processo.horas_por_turno * processo.turnos_por_dia
-            * processo.dias_operacao_ano
-        )
+        if processo.producao_mensal is not None and processo.producao_mensal > 0:
+            prod_anual = processo.producao_mensal * 12
+        else:
+            cad = processo.cadencia_producao or 0.0
+            prod_anual = cad * 60 * processo.horas_por_turno * processo.turnos_por_dia * processo.dias_operacao_ano
+
+        horas_anuais = processo.horas_por_turno * processo.turnos_por_dia * processo.dias_operacao_ano
         pessoas_total = processo.pessoas_processo_turno * processo.turnos_por_dia
+        custo_hora_operador = (processo.salario_medio_operador * cliente.fator_encargos) / 176
+        custo_hora_parada = (processo.faturamento_mensal_linha or 0.0) / 176
 
         box_w = Inches(3.5)
         box_h = Inches(1.2)
@@ -359,14 +383,13 @@ class PPTXGenerator:
             "Pessoas Expostas (Total)", f"{pessoas_total} pessoas",
         )
 
-        custo_material = processo.custo_unitario_peca * processo.fracao_material
         self._add_metric_box(
             slide, start_x, Inches(3.8), box_w, box_h,
-            "Custo Material / Peça", self._fmt(custo_material),
+            "Custo Hora Operador (c/ encargos)", self._fmt(custo_hora_operador),
         )
         self._add_metric_box(
             slide, start_x + box_w + gap, Inches(3.8), box_w, box_h,
-            "Custo Unitário da Peça", self._fmt(processo.custo_unitario_peca),
+            "Custo Hora Parada", self._fmt(custo_hora_parada),
         )
         self._add_metric_box(
             slide, start_x + 2 * (box_w + gap), Inches(3.8), box_w, box_h,
@@ -379,48 +402,54 @@ class PPTXGenerator:
         self._add_title_bar(slide, "Análise Estratégica — Dores Identificadas")
         self._add_subtitle(slide, "Custos mapeados no cenário atual do cliente")
 
-        categorias = {
-            "Custos Operacionais (CO)": [
-                ("CO-1: Folha de Pagamento", dores.co1_folha_pagamento),
-                ("CO-2: Terceirização", dores.co2_terceirizacao),
-                ("CO-3: Desperdício", dores.co3_desperdicio),
-                ("CO-4: Manutenção Corretiva", dores.co4_manutencao),
-            ],
-            "Qualidade (QL)": [
-                ("QL-1: Retrabalho", dores.ql1_retrabalho),
-                ("QL-2: Refugo / Scrap", dores.ql2_refugo),
-                ("QL-3: Inspeção Manual", dores.ql3_inspecao_manual),
-                ("QL-4: Logística Reversa", dores.ql4_logistica_reversa),
-                ("QL-5: Multas Qualidade", dores.ql5_multas_qualidade),
-            ],
-            "Segurança (SE)": [
-                ("SE-1: Absenteísmo", dores.se1_absenteismo),
-                ("SE-2: Turnover", dores.se2_turnover),
-                ("SE-3: Treinamentos", dores.se3_treinamentos),
-                ("SE-4: Passivo Jurídico", dores.se4_passivo_juridico),
-            ],
-            "Produtividade (PR)": [
-                ("PR-1: Horas Extras", dores.pr1_horas_extras),
-                ("PR-2: Headcount", dores.pr2_headcount),
-                ("PR-3: Vendas Perdidas", dores.pr3_vendas_perdidas),
-                ("PR-4: Multas Atraso", dores.pr4_multas_atraso),
-            ],
-        }
-
-        col_x = [Inches(0.5), Inches(3.6), Inches(6.7), Inches(9.8)]
-        for idx, (cat_name, itens) in enumerate(categorias.items()):
-            x = col_x[idx]
-            self._add_textbox(
-                slide, x, Inches(2.2), Inches(2.8), Inches(0.4),
-                cat_name, font_size=12, bold=True, color=AZUL_ESCURO,
-            )
-            for i, (nome, ativo) in enumerate(itens):
+        def _lines(itens):
+            out = []
+            for nome, ativo in itens:
                 marcador = "●" if ativo else "○"
-                cor = AZUL_MEDIO if ativo else CINZA_MEDIO
-                self._add_textbox(
-                    slide, x, Inches(2.8 + i * 0.45), Inches(2.8), Inches(0.4),
-                    f"{marcador} {nome}", font_size=11, color=cor,
-                )
+                out.append(f"{marcador} {nome}")
+            return "\n".join(out)
+
+        dor1 = [
+            ("F01: Mão de Obra Direta", dores.f01_mao_de_obra_direta),
+            ("F02: Horas Extras", dores.f02_horas_extras),
+            ("F03: Curva de Aprendizagem", dores.f03_curva_aprendizagem),
+            ("F04: Turnover", dores.f04_turnover),
+        ]
+        dor2 = [
+            ("F05: Refugo e Retrabalho", dores.f05_refugo_retrabalho),
+            ("F06: Inspeção Manual", dores.f06_inspecao_manual),
+            ("F07: Escapes de Qualidade", dores.f07_escapes_qualidade),
+        ]
+        dor3 = [
+            ("F08: Custo de Oportunidade", dores.f08_custo_oportunidade),
+            ("F09: Ociosidade Silenciosa", dores.f09_ociosidade_silenciosa),
+            ("F10: Paradas de Linha", dores.f10_paradas_linha),
+            ("F11: Setup/Changeover", dores.f11_setup_changeover),
+        ]
+        dor4 = [
+            ("F12: Riscos/Acidentes", dores.f12_riscos_acidentes),
+            ("F13: Frota Empilhadeiras", dores.f13_frota_empilhadeiras),
+        ]
+        dor5 = [
+            ("F14: Supervisão", dores.f14_supervisao),
+            ("F15: Compliance/EPIs", dores.f15_compliance_epis),
+            ("F16: Energia/Utilidades", dores.f16_energia_utilidades),
+            ("F17: Espaço Físico", dores.f17_espaco_fisico),
+            ("F18: Gestão de Dados", dores.f18_gestao_dados),
+        ]
+
+        self._add_textbox(slide, Inches(0.8), Inches(2.1), Inches(5.8), Inches(2.4), "Dor 1: Mão de Obra", font_size=14, bold=True, color=AZUL_ESCURO)
+        self._add_textbox(slide, Inches(0.8), Inches(2.5), Inches(5.8), Inches(1.8), _lines(dor1), font_size=12, color=CINZA_ESCURO)
+
+        self._add_textbox(slide, Inches(0.8), Inches(4.2), Inches(5.8), Inches(2.4), "Dor 2: Qualidade", font_size=14, bold=True, color=AZUL_ESCURO)
+        self._add_textbox(slide, Inches(0.8), Inches(4.6), Inches(5.8), Inches(1.4), _lines(dor2), font_size=12, color=CINZA_ESCURO)
+
+        self._add_textbox(slide, Inches(7.0), Inches(2.1), Inches(5.8), Inches(2.4), "Dor 3: Produtividade", font_size=14, bold=True, color=AZUL_ESCURO)
+        self._add_textbox(slide, Inches(7.0), Inches(2.5), Inches(5.8), Inches(1.8), _lines(dor3), font_size=12, color=CINZA_ESCURO)
+
+        self._add_textbox(slide, Inches(7.0), Inches(4.2), Inches(5.8), Inches(2.4), "Dor 4 e 5", font_size=14, bold=True, color=AZUL_ESCURO)
+        self._add_textbox(slide, Inches(7.0), Inches(4.6), Inches(5.8), Inches(0.9), _lines(dor4), font_size=12, color=CINZA_ESCURO)
+        self._add_textbox(slide, Inches(7.0), Inches(5.5), Inches(5.8), Inches(1.7), _lines(dor5), font_size=12, color=CINZA_ESCURO)
 
     def _slide_07_cenario_critico(self, resultados: ResultadosFinanceiros):
         slide = self._add_slide()
@@ -430,21 +459,22 @@ class PPTXGenerator:
         self._add_metric_box(
             slide, Inches(3.5), Inches(1.8), Inches(6), Inches(1.5),
             "CUSTO TOTAL ANUAL IDENTIFICADO",
-            self._fmt(resultados.custo_total_anual),
+            self._fmt(resultados.custo_total_anual_inacao),
             color=VERMELHO,
         )
 
-        # 4 categorias
-        box_w = Inches(2.8)
+        # 5 dores
+        box_w = Inches(2.5)
         start_x = Inches(0.7)
         gap = Inches(0.3)
         top = Inches(4)
 
         categorias = [
-            ("CO - Operacional", resultados.total_co),
-            ("QL - Qualidade", resultados.total_ql),
-            ("SE - Segurança", resultados.total_se),
-            ("PR - Produtividade", resultados.total_pr),
+            ("Dor 1 - Mão de Obra", resultados.total_dor1),
+            ("Dor 2 - Qualidade", resultados.total_dor2),
+            ("Dor 3 - Produtividade", resultados.total_dor3),
+            ("Dor 4 - Segurança", resultados.total_dor4),
+            ("Dor 5 - Custos Ocultos", resultados.total_dor5),
         ]
 
         for i, (label, valor) in enumerate(categorias):
@@ -483,29 +513,36 @@ class PPTXGenerator:
 
     def _slide_08_custos_operacionais(self, resultados: ResultadosFinanceiros):
         self._slide_custos_categoria(
-            "Quantificação — Custos Operacionais (CO)",
-            resultados.breakdown_co, resultados.total_co,
+            "Quantificação — Dor 1: Mão de Obra",
+            resultados.breakdown_dor1, resultados.total_dor1,
         )
 
     def _slide_09_custos_qualidade(self, resultados: ResultadosFinanceiros):
         self._slide_custos_categoria(
-            "Quantificação — Qualidade (QL)",
-            resultados.breakdown_ql, resultados.total_ql,
+            "Quantificação — Dor 2: Qualidade",
+            resultados.breakdown_dor2, resultados.total_dor2,
         )
 
     def _slide_10_custos_seguranca(self, resultados: ResultadosFinanceiros):
         self._slide_custos_categoria(
-            "Quantificação — Segurança e Ergonomia (SE)",
-            resultados.breakdown_se, resultados.total_se,
+            "Quantificação — Dor 3: Produtividade",
+            resultados.breakdown_dor3, resultados.total_dor3,
         )
 
     def _slide_11_custos_produtividade(self, resultados: ResultadosFinanceiros):
         self._slide_custos_categoria(
-            "Quantificação — Produtividade (PR)",
-            resultados.breakdown_pr, resultados.total_pr,
+            "Quantificação — Dor 4: Segurança e Ergonomia",
+            resultados.breakdown_dor4, resultados.total_dor4,
         )
 
-    def _slide_12_consolidacao(self, resultados: ResultadosFinanceiros):
+    def _slide_12_custos_ocultos(self, resultados: ResultadosFinanceiros):
+        self._slide_custos_categoria(
+            "Quantificação — Dor 5: Custos Ocultos",
+            resultados.breakdown_dor5,
+            resultados.total_dor5,
+        )
+
+    def _slide_13_consolidacao(self, resultados: ResultadosFinanceiros):
         slide = self._add_slide()
         self._add_title_bar(slide, "Consolidação Financeira")
 
@@ -513,38 +550,46 @@ class PPTXGenerator:
         table_data = [
             ["Categoria", "Custo Anual (R$)", "% do Total"],
             [
-                "CO - Custos Operacionais",
-                self._fmt(resultados.total_co),
+                "Dor 1 - Mão de Obra",
+                self._fmt(resultados.total_dor1),
                 self._fmt_pct(
-                    resultados.total_co / resultados.custo_total_anual * 100
-                    if resultados.custo_total_anual > 0 else 0
+                    resultados.total_dor1 / resultados.custo_total_anual_inacao * 100
+                    if resultados.custo_total_anual_inacao > 0 else 0
                 ),
             ],
             [
-                "QL - Qualidade",
-                self._fmt(resultados.total_ql),
+                "Dor 2 - Qualidade",
+                self._fmt(resultados.total_dor2),
                 self._fmt_pct(
-                    resultados.total_ql / resultados.custo_total_anual * 100
-                    if resultados.custo_total_anual > 0 else 0
+                    resultados.total_dor2 / resultados.custo_total_anual_inacao * 100
+                    if resultados.custo_total_anual_inacao > 0 else 0
                 ),
             ],
             [
-                "SE - Segurança / Ergonomia",
-                self._fmt(resultados.total_se),
+                "Dor 3 - Produtividade",
+                self._fmt(resultados.total_dor3),
                 self._fmt_pct(
-                    resultados.total_se / resultados.custo_total_anual * 100
-                    if resultados.custo_total_anual > 0 else 0
+                    resultados.total_dor3 / resultados.custo_total_anual_inacao * 100
+                    if resultados.custo_total_anual_inacao > 0 else 0
                 ),
             ],
             [
-                "PR - Produtividade",
-                self._fmt(resultados.total_pr),
+                "Dor 4 - Segurança",
+                self._fmt(resultados.total_dor4),
                 self._fmt_pct(
-                    resultados.total_pr / resultados.custo_total_anual * 100
-                    if resultados.custo_total_anual > 0 else 0
+                    resultados.total_dor4 / resultados.custo_total_anual_inacao * 100
+                    if resultados.custo_total_anual_inacao > 0 else 0
                 ),
             ],
-            ["TOTAL", self._fmt(resultados.custo_total_anual), "100.0%"],
+            [
+                "Dor 5 - Custos Ocultos",
+                self._fmt(resultados.total_dor5),
+                self._fmt_pct(
+                    resultados.total_dor5 / resultados.custo_total_anual_inacao * 100
+                    if resultados.custo_total_anual_inacao > 0 else 0
+                ),
+            ],
+            ["TOTAL", self._fmt(resultados.custo_total_anual_inacao), "100.0%"],
         ]
 
         table = self._add_table(

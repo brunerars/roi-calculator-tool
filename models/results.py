@@ -1,63 +1,67 @@
 """
-Schemas de resultados finais
+Schemas de resultados finais — V2.0.
 """
-from dataclasses import dataclass, field
+
+from dataclasses import dataclass
 from typing import Dict
 
 
 @dataclass
 class MetasReducao:
-    """Metas de redução de custos (%)"""
-    # Custos Operacionais
-    meta_co1: float = 0.0
-    meta_co2: float = 0.0
-    meta_co3: float = 0.0
-    meta_co4: float = 0.0
+    """Metas de redução de custos por fórmula (%) — V2.0 (armazenadas como fração 0–1)."""
 
-    # Qualidade
-    meta_ql1: float = 0.0
-    meta_ql2: float = 0.0
-    meta_ql3: float = 0.0
-    meta_ql4: float = 0.0
-    meta_ql5: float = 0.0
-
-    # Segurança
-    meta_se1: float = 0.0
-    meta_se2: float = 0.0
-    meta_se3: float = 0.0
-    meta_se4: float = 0.0
-
-    # Produtividade
-    meta_pr1: float = 0.0
-    meta_pr2: float = 0.0
-    meta_pr3: float = 0.0
-    meta_pr4: float = 0.0
+    meta_f01: float = 0.0
+    meta_f02: float = 0.0
+    meta_f03: float = 0.0
+    meta_f04: float = 0.0
+    meta_f05: float = 0.0
+    meta_f06: float = 0.0
+    meta_f07: float = 0.0
+    meta_f08: float = 0.0
+    meta_f09: float = 0.0
+    meta_f10: float = 0.0
+    meta_f11: float = 0.0
+    meta_f12: float = 0.0
+    meta_f13: float = 0.0
+    meta_f14: float = 0.0
+    meta_f15: float = 0.0
+    meta_f16: float = 0.0
+    meta_f17: float = 0.0
+    meta_f18: float = 0.0
 
 
 @dataclass
 class ResultadosFinanceiros:
-    """Resultados consolidados"""
-    # Custos por categoria
-    total_co: float
-    total_ql: float
-    total_se: float
-    total_pr: float
+    """Resultados consolidados V2.0 (Custo da Inação)."""
+
+    # Custos por Dor (atuais)
+    total_dor1: float
+    total_dor2: float
+    total_dor3: float
+    total_dor4: float
+    total_dor5: float
 
     # Totais
-    custo_total_anual: float
-    ganho_anual_potencial: float  # baseado em % de redução
+    custo_total_anual_inacao: float
+    ganho_anual_potencial: float
 
     # Investimento
     investimento_medio: float
 
     # Indicadores
     payback_anos: float
-    roi_1_ano: float  # %
-    roi_3_anos: float  # %
-    roi_5_anos: float  # %
+    roi_1_ano: float
+    roi_3_anos: float
+    roi_5_anos: float
 
-    # Breakdown detalhado
-    breakdown_co: Dict[str, float] = field(default_factory=dict)
-    breakdown_ql: Dict[str, float] = field(default_factory=dict)
-    breakdown_se: Dict[str, float] = field(default_factory=dict)
-    breakdown_pr: Dict[str, float] = field(default_factory=dict)
+    # Breakdown por Dor (chaves como F01/F02/... e subchaves quando aplicável)
+    breakdown_dor1: Dict[str, float]
+    breakdown_dor2: Dict[str, float]
+    breakdown_dor3: Dict[str, float]
+    breakdown_dor4: Dict[str, float]
+    breakdown_dor5: Dict[str, float]
+
+    # Metadata
+    area_atuacao: str
+    porte_empresa: str
+    fator_encargos_usado: float

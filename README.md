@@ -1,14 +1,24 @@
-# ROI Calculator — Automação Industrial
+# Calculadora do Custo da Inação — V2.0
 
-Ferramenta web para quantificar o retorno sobre investimento (ROI) de projetos de automação industrial e gerar apresentações PPTX customizadas.
+Ferramenta web (Streamlit) para acelerar propostas comerciais de automação industrial quantificando o **Custo da Inação** (“quanto custa NÃO automatizar?”) e gerando uma apresentação **PPTX** executiva.
+
+## Conceito (V2.0)
+
+- **Custo da Inação**: custo anual de manter um processo manual (perdas por mão de obra, qualidade, produtividade, segurança e custos ocultos).
+- **Estrutura**: **5 Dores** + **18 fórmulas** (F01–F18).
+- **Premissas CFO-friendly**:
+  - **Encargos trabalhistas selecionáveis**: 1,7 / 1,85 / 2,0
+  - **Custo-hora operador**: divisor **176h** (220h apenas quando aplicável a HE/CLT)
+  - **Custo-hora parada**: baseado em **faturamento mensal / 176**
 
 ## Funcionalidades
 
-- Formulário de input com dados do cliente e processo
-- Seleção de 17 dores/custos em 4 categorias (CO, QL, SE, PR)
-- Motor de cálculo com fórmulas detalhadas
-- Dashboard com métricas (Payback, ROI 1/3/5 anos)
-- Geração de apresentação PPTX com 16 slides
+- Formulário V2.0 (cliente + processo atual)
+- **Seleção de Área ARV** com **pré-seleção** de fórmulas aplicáveis
+- Parâmetros detalhados condicionais por fórmula (F01–F18)
+- Metas de redução por fórmula
+- Dashboard: Custo total anual, ganho anual potencial, payback, ROI (1/3/5 anos) + breakdown por Dor e por fórmula
+- Exportação de **PPTX** programático (16+ slides) com narrativa “Custo da Inação”
 
 ## Stack
 
@@ -17,7 +27,7 @@ Ferramenta web para quantificar o retorno sobre investimento (ROI) de projetos d
 - python-pptx
 - pandas
 
-## Setup Local
+## Rodando localmente
 
 ```bash
 python -m venv venv
@@ -31,18 +41,53 @@ streamlit run app.py
 ## Testes
 
 ```bash
-pip install pytest
 python -m pytest tests/ -v
+```
+
+## Deploy (VPS + Docker Swarm + Traefik)
+
+Este repositório inclui CI/CD via GitHub Actions que:
+
+- Builda e publica a imagem no `ghcr.io`
+- Faz deploy automático no VPS via `docker stack deploy` (stack `roi-calculator`)
+
+### Pré-requisitos no VPS
+
+- Docker Swarm inicializado
+- Traefik já configurado no Swarm (SSL automático)
+- Rede overlay externa existente: `network_public`
+
+### Secrets no GitHub (Actions)
+
+Estes secrets precisam existir no repositório:
+
+- `VPS_HOST`
+- `VPS_USER`
+- `VPS_SSH_KEY`
+
+### Como funciona
+
+- Workflow: `.github/workflows/deploy.yml`
+- Compose de produção: `docker-compose.prod.yml`
+- Domínio: `roi-calculator.arvsystems.cloud`
+- Porta interna do container (Streamlit): `8501`
+
+### Rollback
+
+Cada build gera uma tag com SHA curto. Para reverter manualmente no VPS:
+
+```bash
+docker service update --image ghcr.io/<owner>/roi-calculator:<sha> roi-calculator_roi-calculator
 ```
 
 ## Estrutura
 
 ```
 ├── app.py                   # Entry point
-├── config/constants.py      # Parâmetros do sistema
-├── models/                  # Dataclasses (inputs, calculations, results)
-├── core/                    # Motor de cálculo, fórmulas, validadores
-├── ui/                      # Formulários, dashboard, estilos
-├── export/                  # Gerador PPTX (16 slides)
+├── config/                  # Constantes V2.0 + Áreas ARV → fórmulas
+├── models/                  # Dataclasses V2.0 (inputs, calculations, results)
+├── core/                    # Motor V2.0 (F01–F18), calculator, validators
+├── ui/                      # Formulários + dashboard
+├── export/                  # Gerador PPTX (programático)
 └── tests/                   # Testes unitários
 ```

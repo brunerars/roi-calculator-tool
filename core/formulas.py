@@ -1,238 +1,293 @@
 """
-Fórmulas detalhadas para cálculo de custos e indicadores financeiros.
+Fórmulas detalhadas — V2.0 (Custo da Inação).
 """
+
+from __future__ import annotations
+
+from typing import Tuple
+
+from config.constants import HORAS_MES_CUSTO_PRODUCAO
 
 
 # =============================================================================
 # BASES COMUNS
 # =============================================================================
 
-def calcular_producao_anual(
-    cadencia: float, horas_turno: float, turnos_dia: int, dias_ano: int
-) -> float:
-    """Produção anual em peças.
+
+def calcular_producao_anual(cadencia: float, horas_turno: float, turnos_dia: int, dias_ano: int) -> float:
+    """
+    Produção anual em peças.
     Fórmula: Cadência × 60 × Horas/turno × Turnos/dia × Dias/ano
     """
+
     return cadencia * 60 * horas_turno * turnos_dia * dias_ano
 
 
-def calcular_horas_anuais(
-    horas_turno: float, turnos_dia: int, dias_ano: int
+def calcular_producao_mensal_from_cadencia(
+    cadencia: float,
+    horas_turno: float,
+    turnos_dia: int,
+    dias_mes: float = 21,
 ) -> float:
-    """Horas anuais de operação.
-    Fórmula: Horas/turno × Turnos/dia × Dias/ano
-    """
+    """Produção mensal estimada via cadência."""
+
+    return cadencia * 60 * horas_turno * turnos_dia * dias_mes
+
+
+def calcular_horas_anuais(horas_turno: float, turnos_dia: int, dias_ano: int) -> float:
+    """Horas anuais de operação."""
+
     return horas_turno * turnos_dia * dias_ano
 
 
 def calcular_pessoas_expostas(pessoas_turno: int, turnos_dia: int) -> int:
-    """Total de pessoas expostas ao processo.
-    Fórmula: Pessoas/turno × Turnos/dia
-    """
+    """Total de pessoas expostas (todos os turnos)."""
+
     return pessoas_turno * turnos_dia
 
 
-def calcular_custo_hora_operador(salario: float, horas_mes: float) -> float:
-    """Custo por hora do operador.
-    Fórmula: Salário / Horas trabalhadas no mês
+def calcular_custo_hora_operador(salario: float, fator_encargos: float) -> float:
     """
-    return salario / horas_mes
-
-
-def calcular_custo_dia_absenteismo(salario: float, dias_ano: int) -> float:
-    """Custo por dia de absenteísmo.
-    Fórmula: (Salário × 12) / Dias de operação por ano
+    Custo por hora do operador COM ENCARGOS.
+    REGRA V2.0: divisor 176h (não 220h).
+    Fórmula: (Salário × Fator Encargos) ÷ 176
     """
-    return (salario * 12) / dias_ano
+
+    return (salario * fator_encargos) / HORAS_MES_CUSTO_PRODUCAO
 
 
-def calcular_custo_material(custo_unitario: float, fracao_material: float) -> float:
-    """Custo de material por peça.
-    Fórmula: Custo unitário × Fração de material
+def calcular_custo_hora_parada(faturamento_mensal: float | None) -> float:
     """
-    return custo_unitario * fracao_material
+    Custo de oportunidade da hora parada (Regra #3).
+    Fórmula: Faturamento Mensal ÷ 176 horas úteis
+    """
+
+    if faturamento_mensal is None or faturamento_mensal == 0:
+        return 0.0
+    return faturamento_mensal / HORAS_MES_CUSTO_PRODUCAO
 
 
 # =============================================================================
-# CO - CUSTOS OPERACIONAIS
+# DOR 1: CUSTO ELEVADO DE MÃO DE OBRA
 # =============================================================================
 
-def calcular_co1_folha_pagamento(
-    pessoas_expostas: int, salario: float, turnos_dia: int
+
+def calcular_f01_mao_de_obra_direta(num_operadores: int, salario_medio: float, fator_encargos: float) -> float:
+    """
+    F01: Custo de Mão de Obra Direta Alocada ao Processo.
+    Fórmula: Nº Operadores × Salário Médio × Fator Encargos × 12
+    """
+
+    return num_operadores * salario_medio * fator_encargos * 12
+
+
+def calcular_f02_horas_extras(num_operadores: int, media_he_mes: float, salario_medio: float, fator_encargos: float) -> float:
+    """
+    F02: Custo real das horas extras (com encargos).
+    Fórmula: Nº Operadores × HE/mês × Custo Hora com Encargos × 1,5 × 12
+    """
+
+    custo_hora = (salario_medio * fator_encargos) / HORAS_MES_CUSTO_PRODUCAO
+    return num_operadores * media_he_mes * custo_hora * 1.5 * 12
+
+
+def calcular_f03_curva_aprendizagem(
+    num_contratacoes: int,
+    salario_novato: float,
+    fator_encargos: float,
+    meses_curva: int,
+    salario_supervisor: float,
+    pct_tempo_supervisor: float,
 ) -> float:
-    """CO-1: Folha de Pagamento Direta.
-    Fórmula: Pessoas × Salário × Turnos × 12
     """
-    return pessoas_expostas * salario * turnos_dia * 12
-
-
-def calcular_co2_terceirizacao(
-    volume: float, custo_unitario: float, meses: int
-) -> float:
-    """CO-2: Terceirização de Produção.
-    Fórmula: Volume × Custo × Meses
+    F03: Custo da curva de aprendizagem (inclui supervisor).
+    Fórmula:
+      Nº Contratações × [ (Salário Novato × Encargos × Meses)
+                        + (Salário Supervisor × Encargos × %Tempo × Meses) ]
     """
-    return volume * custo_unitario * meses
+
+    custo_novato = salario_novato * fator_encargos * meses_curva
+    custo_supervisor = salario_supervisor * fator_encargos * pct_tempo_supervisor * meses_curva
+    return num_contratacoes * (custo_novato + custo_supervisor)
 
 
-def calcular_co3_desperdicio(
-    producao_anual: float, percentual_desperdicio: float, custo_material: float
-) -> float:
-    """CO-3: Desperdício de Insumos.
-    Fórmula: Produção anual × % desperdício × Custo material
+def calcular_f04_turnover(num_desligamentos: int, salario_medio: float, fator_custo_turnover: float) -> float:
     """
-    return producao_anual * percentual_desperdicio * custo_material
-
-
-def calcular_co4_manutencao(
-    paradas_mes: int, duracao_min: float, custo_hora_parada: float
-) -> float:
-    """CO-4: Manutenção Corretiva.
-    Fórmula: (Paradas × Min / 60 × 12) × Custo hora parada
+    F04: Custo real do turnover.
+    Fórmula: Nº Desligamentos × Salário × Fator de custo de turnover (benchmark 1,5–3,0)
     """
-    return (paradas_mes * duracao_min / 60 * 12) * custo_hora_parada
 
-
-# =============================================================================
-# QL - QUALIDADE
-# =============================================================================
-
-def calcular_ql1_retrabalho(
-    producao_anual: float,
-    percentual_retrabalho: float,
-    custo_peca: float,
-    fator_retrabalho: float,
-) -> float:
-    """QL-1: Retrabalho Interno.
-    Fórmula: Produção anual × % retrabalho × Custo peça × Fator retrabalho
-    """
-    return producao_anual * percentual_retrabalho * custo_peca * fator_retrabalho
-
-
-def calcular_ql2_refugo(
-    producao_anual: float, percentual_scrap: float, custo_peca: float
-) -> float:
-    """QL-2: Refugo / Scrap.
-    Fórmula: Produção anual × % refugo × Custo peça
-    """
-    return producao_anual * percentual_scrap * custo_peca
-
-
-def calcular_ql3_inspecao(
-    pessoas_inspecao: int, salario: float, turnos_dia: int
-) -> float:
-    """QL-3: Inspeção Manual 100%.
-    Fórmula: Pessoas inspeção × Salário × Turnos × 12
-    """
-    return pessoas_inspecao * salario * turnos_dia * 12
-
-
-def calcular_ql4_logistica(
-    producao_anual: float, percentual_retorno: float, custo_logistica: float
-) -> float:
-    """QL-4: Logística Reversa / Garantias.
-    Fórmula: Produção anual × % retorno × Custo logística
-    """
-    return producao_anual * percentual_retorno * custo_logistica
-
-
-def calcular_ql5_multas_qualidade(ocorrencias: int, multa_media: float) -> float:
-    """QL-5: Multas Contratuais de Qualidade.
-    Fórmula: Ocorrências × Multa média
-    """
-    return ocorrencias * multa_media
+    return num_desligamentos * (salario_medio * fator_custo_turnover)
 
 
 # =============================================================================
-# SE - SEGURANÇA E ERGONOMIA
+# DOR 2: BAIXA QUALIDADE
 # =============================================================================
 
-def calcular_se1_absenteismo(dias_perdidos: int, custo_dia: float) -> float:
-    """SE-1: Absenteísmo.
-    Fórmula: Dias perdidos × Custo/dia
+
+def calcular_f05_refugo_retrabalho(
+    producao_mensal: float,
+    pct_refugo: float,
+    custo_mp_unidade: float,
+    pct_retrabalho: float,
+    horas_retrab_unidade: float,
+    custo_hora_operador: float,
+) -> Tuple[float, float, float]:
     """
-    return dias_perdidos * custo_dia
-
-
-def calcular_se2_turnover(desligamentos: int, custo_rescisao: float) -> float:
-    """SE-2: Turnover (Rotatividade).
-    Fórmula: Desligamentos × Custo rescisão
+    F05: Custo do refugo e do retrabalho (separados).
+    Refugo = Produção Mensal × % Refugo × Custo MP/Unidade × 12
+    Retrabalho = Produção Mensal × % Retrabalho × Horas Retrab. × Custo Hora × 12
     """
-    return desligamentos * custo_rescisao
+
+    custo_refugo = producao_mensal * pct_refugo * custo_mp_unidade * 12
+    custo_retrabalho = producao_mensal * pct_retrabalho * horas_retrab_unidade * custo_hora_operador * 12
+    return (custo_refugo, custo_retrabalho, custo_refugo + custo_retrabalho)
 
 
-def calcular_se3_treinamentos(desligamentos: int, custo_treinamento: float) -> float:
-    """SE-3: Treinamentos Recorrentes.
-    Fórmula: Desligamentos × Custo treinamento
-    """
-    return desligamentos * custo_treinamento
+def calcular_f06_inspecao_manual(num_inspetores: int, salario_inspetor: float, fator_encargos: float) -> float:
+    """F06: Custo da inspeção manual. Fórmula: Nº Inspetores × Salário × Encargos × 12."""
+
+    return num_inspetores * salario_inspetor * fator_encargos * 12
 
 
-def calcular_se4_passivo_juridico(ocorrencias: int, provisao: float) -> float:
-    """SE-4: Passivo Jurídico / Multas.
-    Fórmula: Ocorrências × Provisão
-    """
-    return ocorrencias * provisao
+def calcular_f07_escapes_qualidade(reclamacoes_ano: int, custo_medio_reclamacao: float) -> float:
+    """F07: Custo dos escapes de qualidade. Fórmula: Reclamações/Ano × Custo Médio."""
+
+    return reclamacoes_ano * custo_medio_reclamacao
 
 
 # =============================================================================
-# PR - PRODUTIVIDADE
+# DOR 3: BAIXA PRODUTIVIDADE
 # =============================================================================
 
-def calcular_pr1_horas_extras(
-    he_totais_mes: float, custo_hora: float, fator_he: float
+
+def calcular_f08_custo_oportunidade(faturamento_mensal: float, pct_demanda_reprimida: float, margem_contribuicao: float) -> float:
+    """
+    F08: Custo de oportunidade (gargalo de faturamento).
+    Fórmula: Faturamento Mensal × % Demanda reprimida × Margem de contribuição × 12
+    """
+
+    return faturamento_mensal * pct_demanda_reprimida * margem_contribuicao * 12
+
+
+def calcular_f09_ociosidade_silenciosa(num_operadores: int, min_ociosos_dia: float, custo_hora_operador: float, dias_ano: int) -> float:
+    """
+    F09: Custo da ociosidade silenciosa.
+    Fórmula: Nº Operadores × (Min ociosos/60) × Custo Hora × Dias/Ano
+    """
+
+    return num_operadores * (min_ociosos_dia / 60) * custo_hora_operador * dias_ano
+
+
+def calcular_f10_paradas_linha(paradas_mes: int, duracao_media_horas: float, custo_hora_parada: float) -> float:
+    """F10: Custo das paradas de linha. Fórmula: Paradas/Mês × Duração(h) × Custo Hora Parada × 12."""
+
+    return paradas_mes * duracao_media_horas * custo_hora_parada * 12
+
+
+def calcular_f11_setup_changeover(setups_mes: int, horas_setup: float, custo_hora_parada: float) -> float:
+    """F11: Custo do setup/changeover. Fórmula: Setups/Mês × Horas/Setup × Custo Hora Parada × 12."""
+
+    return setups_mes * horas_setup * custo_hora_parada * 12
+
+
+# =============================================================================
+# DOR 4: FALTA DE SEGURANÇA E ERGONOMIA
+# =============================================================================
+
+
+def calcular_f12_riscos_acidentes(
+    afastamentos_ano: int,
+    custo_afastamento: float,
+    acidentes_ano: int,
+    custo_acidente: float,
+    prob_processo: float,
+    custo_processo: float,
+) -> Tuple[float, float, float, float]:
+    """
+    F12: Custo dos riscos, acidentes e doenças (3 componentes).
+    Retorna: (afastamentos, acidentes, risco_legal, total)
+    """
+
+    c_afast = afastamentos_ano * custo_afastamento
+    c_acid = acidentes_ano * custo_acidente
+    c_legal = prob_processo * custo_processo
+    return (c_afast, c_acid, c_legal, c_afast + c_acid + c_legal)
+
+
+def calcular_f13_frota_empilhadeiras(
+    num_empilhadeiras: int,
+    custo_operador: float,
+    custo_equipamento: float,
+    custo_energia: float,
+    custo_manutencao: float,
 ) -> float:
-    """PR-1: Horas Extras Recorrentes.
-    Fórmula: HE totais/mês × 12 × Custo hora × Fator HE
     """
-    return he_totais_mes * 12 * custo_hora * fator_he
-
-
-def calcular_pr2_headcount(pessoas_adicionais: int, custo_mensal: float) -> float:
-    """PR-2: Aumento de Headcount.
-    Fórmula: Pessoas × Custo mensal × 12
+    F13: Custo real da frota de empilhadeiras (TCO).
+    Fórmula: Nº Empilhadeiras × (Operador + Equipamento + Energia + Manutenção) × 12
     """
-    return pessoas_adicionais * custo_mensal * 12
+
+    custo_mensal_total = custo_operador + custo_equipamento + custo_energia + custo_manutencao
+    return num_empilhadeiras * custo_mensal_total * 12
 
 
-def calcular_pr3_vendas_perdidas(demanda_mes: float, margem_peca: float) -> float:
-    """PR-3: Vendas Perdidas (Custo de Oportunidade).
-    Fórmula: Demanda não atendida/mês × 12 × Margem
-    """
-    return demanda_mes * 12 * margem_peca
+# =============================================================================
+# DOR 5: CUSTOS OCULTOS DE GESTÃO E ESTRUTURA
+# =============================================================================
 
 
-def calcular_pr4_multas_atraso(ocorrencias: int, multa: float) -> float:
-    """PR-4: Multas por Atraso.
-    Fórmula: Ocorrências × Multa
-    """
-    return ocorrencias * multa
+def calcular_f14_supervisao(num_supervisores: int, salario_supervisor: float, fator_encargos: float) -> float:
+    """F14: Custo de supervisão. Fórmula: Nº Supervisores × Salário × Encargos × 12."""
+
+    return num_supervisores * salario_supervisor * fator_encargos * 12
+
+
+def calcular_f15_compliance_epis(num_operadores: int, custo_epi_ano: float, custo_exames_ano: float) -> float:
+    """F15: Custo de compliance/EPIs/exames. Fórmula: Nº Operadores × (EPI/Ano + Exames/Ano)."""
+
+    return num_operadores * (custo_epi_ano + custo_exames_ano)
+
+
+def calcular_f16_energia(area_m2: float, custo_energia_m2_ano: float) -> float:
+    """F16: Custo de energia/utilidades não-produtivo. Fórmula: Área(m²) × Custo Energia/m²/ano."""
+
+    return area_m2 * custo_energia_m2_ano
+
+
+def calcular_f17_espaco_fisico(area_m2: float, custo_m2_ano: float, pct_reducao: float) -> float:
+    """F17: Custo do espaço físico. Fórmula: Área × Custo m²/ano × % redução."""
+
+    return area_m2 * custo_m2_ano * pct_reducao
+
+
+def calcular_f18_gestao_dados(num_pessoas: int, horas_dia: float, custo_hora_operador: float, dias_ano: int) -> float:
+    """F18: Custo da gestão manual de dados. Fórmula: Nº Pessoas × Horas/Dia × Custo Hora × Dias/Ano."""
+
+    return num_pessoas * horas_dia * custo_hora_operador * dias_ano
 
 
 # =============================================================================
 # INDICADORES FINANCEIROS
 # =============================================================================
 
+
 def calcular_payback(investimento: float, ganho_anual: float) -> float:
-    """Payback Simples em anos.
-    Fórmula: Investimento / Ganho anual
-    """
+    """Payback simples em anos. Fórmula: Investimento ÷ Ganho anual."""
+
     if ganho_anual == 0:
         return float("inf")
     return investimento / ganho_anual
 
 
 def calcular_roi(investimento: float, ganho_anual: float, anos: int) -> float:
-    """ROI em % para N anos.
-    Fórmula: ((Ganho × Anos) - Investimento) / Investimento × 100
-    """
+    """ROI em % para N anos. Fórmula: ((Ganho×Anos) − Investimento) ÷ Investimento × 100."""
+
     if investimento == 0:
         return 0.0
     return ((ganho_anual * anos) - investimento) / investimento * 100
 
 
 def calcular_ganho_anual(custo_atual: float, meta_reducao: float) -> float:
-    """Ganho anual baseado em meta de redução.
-    Fórmula: Custo atual × Meta de redução (%)
-    """
+    """Ganho anual potencial. Fórmula: Custo atual × Meta de redução (fração 0–1)."""
+
     return custo_atual * meta_reducao
