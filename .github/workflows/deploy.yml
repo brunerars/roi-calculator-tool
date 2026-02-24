@@ -79,70 +79,63 @@ jobs:
       - name: Checkout código (para docker-compose.prod.yml)
         uses: actions/checkout@v4
 
-      - name: Validar secrets de deploy
-        shell: bash
-        run: |
-          if [ -z "${{ secrets.VPS_HOST }}" ]; then
-            echo "Secret ausente: VPS_HOST"
-            exit 1
-          fi
-          if [ -z "${{ secrets.VPS_USER }}" ]; then
-            echo "Secret ausente: VPS_USER"
-            exit 1
-          fi
-          if [ -z "${{ secrets.VPS_SSH_KEY }}" ]; then
-            echo "Secret ausente: VPS_SSH_KEY"
-            exit 1
-          fi
-
-      - name: Preparar diretório da stack
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           timeout: 60s
-          command_timeout: 2m
-          script: |
-            set -e
-            mkdir -p /opt/stacks/roi-calculator
-
-      - name: Enviar docker-compose.prod.yml
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "docker-compose.prod.yml"
-          target: "/opt/stacks/roi-calculator/"
-
-      - name: Deploy via SSH (docker stack deploy)
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          timeout: 60s
-          command_timeout: 10m
+          command_timeout: 5m
           script: |
             set -e
 
             IMAGE="${{ env.IMAGE }}"
-            STACK="roi-calculator"
-            COMPOSE="/opt/stacks/roi-calculator/docker-compose.prod.yml"
+            SERVICE_EXPECTED="roi-calculator_roi-calculator"
+
+            resolve_service() {
+              expected="$1"
+              suffix="$2"
+
+              if docker service inspect "${expected}" >/dev/null 2>&1; then
+                echo "${expected}"
+                return 0
+              fi
+
+              found="$(docker service ls --format '{{.Name}}' | grep -E "_${suffix}$" | head -n 1 || true)"
+              if [ -n "${found}" ]; then
+                echo "${found}"
+                return 0
+              fi
+
+              return 1
+            }
 
             echo "Login no registry..."
             echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            echo "Deploy stack (${STACK})..."
-            export IMAGE="${IMAGE}:latest"
-            docker stack deploy --with-registry-auth -c "${COMPOSE}" "${STACK}"
+            echo "Pulling imagem nova..."
+            docker pull "${IMAGE}:latest"
 
-            echo "Serviços da stack:"
-            docker service ls --filter label=com.docker.stack.namespace="${STACK}"
+            echo "Verificando stack/serviço..."
+            SERVICE="$(resolve_service "${SERVICE_EXPECTED}" "roi-calculator")" || true
+
+            if [ -z "${SERVICE}" ]; then
+              echo "Stack/serviço não encontrado."
+              echo "Crie a stack manualmente primeiro, usando docker-compose.prod.yml (stack: roi-calculator)."
+              docker service ls
+              exit 1
+            fi
+
+            echo "Atualizando serviço (${SERVICE})..."
+            docker service update \
+              --image "${IMAGE}:latest" \
+              --with-registry-auth \
+              --force \
+              "${SERVICE}"
 
             echo "Limpando imagens antigas..."
             docker image prune -f
 
-            echo "✅ Deploy concluído!"
+            echo "Deploy concluído!"
 
