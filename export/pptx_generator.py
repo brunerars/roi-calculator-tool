@@ -15,6 +15,7 @@ from models.inputs import (
     ProcessoAtual,
     DoresSelecionadas,
     InvestimentoAutomacao,
+    ParametrosDetalhados,
 )
 from models.results import ResultadosFinanceiros, MetasReducao
 
@@ -49,6 +50,7 @@ class PPTXGenerator:
         resultados: ResultadosFinanceiros,
         metas: MetasReducao,
         investimento: InvestimentoAutomacao,
+        parametros: ParametrosDetalhados = None,
     ) -> io.BytesIO:
         """Gera PPTX completo e retorna como BytesIO."""
         self._slide_01_capa(cliente)
@@ -64,6 +66,8 @@ class PPTXGenerator:
         self._slide_11_custos_produtividade(resultados)  # Dor 4
         self._slide_12_custos_ocultos(resultados)  # Dor 5
         self._slide_13_consolidacao(resultados)
+        if parametros is not None:
+            self._slides_detalhamento_calculos(resultados, processo, parametros)
         self._slide_13_escopo_tecnico()
         self._slide_14_investimento(investimento)
         self._slide_15_viabilidade(resultados, investimento)
@@ -393,8 +397,8 @@ class PPTXGenerator:
         )
         self._add_metric_box(
             slide, start_x + 2 * (box_w + gap), Inches(3.8), box_w, box_h,
-            "Turnos x Dias/Ano",
-            f"{processo.turnos_por_dia} turnos x {processo.dias_operacao_ano} dias",
+            "Faturamento Mensal da Linha",
+            self._fmt(processo.faturamento_mensal_linha or 0.0),
         )
 
     def _slide_06_analise_estrategica(self, dores: DoresSelecionadas):
@@ -616,6 +620,276 @@ class PPTXGenerator:
             color=VERDE,
         )
 
+    def _get_formula_details(
+        self,
+        resultados: ResultadosFinanceiros,
+        processo: ProcessoAtual,
+        parametros: ParametrosDetalhados,
+    ) -> list:
+        """
+        Retorna lista de (dor_titulo, rows) onde rows = [(formula, metodologia, valores, resultado)].
+        Apenas fórmulas com resultado > 0 são incluídas.
+        """
+        fator = resultados.fator_encargos_usado
+        chp = resultados.custo_hora_parada
+        n_op = processo.pessoas_processo_turno * processo.turnos_por_dia
+        n_insp = processo.pessoas_inspecao_turno * processo.turnos_por_dia
+        custo_hora_op = (processo.salario_medio_operador * fator) / 176
+
+        dors = []
+
+        # --- Dor 1 ---
+        rows = []
+        v = resultados.breakdown_dor1.get("F01 - Mão de Obra Direta", 0)
+        if v > 0:
+            rows.append((
+                "F01 - Mão de Obra Direta",
+                "Op × Salário × Encargos × 12",
+                f"{n_op} op × R${processo.salario_medio_operador:,.0f} × {fator:.2f} × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor1.get("F02 - Horas Extras", 0)
+        if v > 0 and parametros.f02_media_he_mes_por_pessoa:
+            rows.append((
+                "F02 - Horas Extras",
+                "Op × HE/mês × Custo Hora × 1,5 × 12",
+                f"{n_op} op × {parametros.f02_media_he_mes_por_pessoa:.0f} HE × R${custo_hora_op:,.2f}/h × 1,5 × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor1.get("F03 - Curva de Aprendizagem", 0)
+        if v > 0 and parametros.f03_novas_contratacoes_ano:
+            rows.append((
+                "F03 - Curva de Aprendizagem",
+                "Contrat. × (Custo Novato + Custo Supervisor treinando)",
+                f"{parametros.f03_novas_contratacoes_ano} contrat. × {parametros.f03_meses_curva or '?'} meses de curva",
+                v,
+            ))
+        v = resultados.breakdown_dor1.get("F04 - Turnover", 0)
+        if v > 0 and parametros.f04_desligamentos_ano:
+            ft = parametros.f04_fator_custo_turnover or 1.5
+            rows.append((
+                "F04 - Turnover",
+                "Desl. × Salário × Fator Turnover",
+                f"{parametros.f04_desligamentos_ano} desl. × R${processo.salario_medio_operador:,.0f} × {ft:.1f}x",
+                v,
+            ))
+        if rows:
+            dors.append(("Detalhamento — Dor 1: Custo de Mão de Obra", rows))
+
+        # --- Dor 2 ---
+        rows = []
+        v = resultados.breakdown_dor2.get("F05 - Refugo", 0)
+        if v > 0 and parametros.f05_percentual_refugo is not None:
+            rows.append((
+                "F05 - Refugo",
+                "Prod. Mensal × % Refugo × Custo MP × 12",
+                f"× {parametros.f05_percentual_refugo*100:.1f}% refugo × R${processo.custo_materia_prima_peca:,.2f}/pç × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor2.get("F05 - Retrabalho", 0)
+        if v > 0 and parametros.f05_percentual_retrabalho is not None:
+            rows.append((
+                "F05 - Retrabalho",
+                "Prod. Mensal × % Retrab. × Horas Retrab. × Custo Hora × 12",
+                f"× {parametros.f05_percentual_retrabalho*100:.1f}% × {parametros.f05_horas_retrabalho_por_unidade or '?'} h/un × R${custo_hora_op:,.2f}/h × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor2.get("F06 - Inspeção Manual", 0)
+        if v > 0:
+            rows.append((
+                "F06 - Inspeção Manual",
+                "Inspetores × Salário × Encargos × 12",
+                f"{n_insp} insp. × R${processo.salario_medio_inspetor:,.0f} × {fator:.2f} × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor2.get("F07 - Escapes de Qualidade", 0)
+        if v > 0 and parametros.f07_reclamacoes_clientes_ano is not None:
+            rows.append((
+                "F07 - Escapes de Qualidade",
+                "Reclamações/Ano × Custo Médio por Reclamação",
+                f"{parametros.f07_reclamacoes_clientes_ano} recl. × R${parametros.f07_custo_medio_por_reclamacao:,.0f}",
+                v,
+            ))
+        if rows:
+            dors.append(("Detalhamento — Dor 2: Qualidade", rows))
+
+        # --- Dor 3 ---
+        rows = []
+        v = resultados.breakdown_dor3.get("F08 - Custo de Oportunidade", 0)
+        if v > 0 and parametros.f08_percentual_demanda_reprimida is not None:
+            rows.append((
+                "F08 - Custo de Oportunidade",
+                "Faturamento × % Demanda Reprimida × Margem × 12",
+                f"R${resultados.faturamento_mensal_linha:,.0f} × {parametros.f08_percentual_demanda_reprimida*100:.0f}% × {parametros.f08_margem_contribuicao*100:.0f}% × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor3.get("F09 - Ociosidade Silenciosa", 0)
+        if v > 0 and parametros.f09_minutos_ociosos_por_dia is not None:
+            rows.append((
+                "F09 - Ociosidade Silenciosa",
+                "Op × (Min Ociosos / 60) × Custo Hora × Dias/Ano",
+                f"{n_op} op × ({parametros.f09_minutos_ociosos_por_dia:.0f} min/60) × R${custo_hora_op:,.2f}/h × {processo.dias_operacao_ano} dias",
+                v,
+            ))
+        v = resultados.breakdown_dor3.get("F10 - Paradas de Linha", 0)
+        if v > 0 and parametros.f10_paradas_mes is not None:
+            chp_f10 = parametros.f10_custo_hora_parada if (parametros.f10_custo_hora_parada and parametros.f10_custo_hora_parada > 0) else chp
+            rows.append((
+                "F10 - Paradas de Linha",
+                "Paradas/mês × Duração (h) × Custo Hora Parada × 12",
+                f"{parametros.f10_paradas_mes} par. × {parametros.f10_duracao_media_parada_horas:.1f} h × R${chp_f10:,.2f}/h × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor3.get("F11 - Setup/Changeover", 0)
+        if v > 0 and parametros.f11_setups_mes is not None:
+            chp_f11 = parametros.f11_custo_hora_parada if (parametros.f11_custo_hora_parada and parametros.f11_custo_hora_parada > 0) else chp
+            rows.append((
+                "F11 - Setup/Changeover",
+                "Setups/mês × Horas/Setup × Custo Hora Parada × 12",
+                f"{parametros.f11_setups_mes} set. × {parametros.f11_horas_por_setup:.2f} h × R${chp_f11:,.2f}/h × 12",
+                v,
+            ))
+        if rows:
+            dors.append(("Detalhamento — Dor 3: Produtividade", rows))
+
+        # --- Dor 4 ---
+        rows = []
+        v_afast = resultados.breakdown_dor4.get("F12 - Afastamentos", 0)
+        v_acid = resultados.breakdown_dor4.get("F12 - Acidentes", 0)
+        v_legal = resultados.breakdown_dor4.get("F12 - Risco Legal", 0)
+        if (v_afast + v_acid + v_legal) > 0 and parametros.f12_afastamentos_ano is not None:
+            rows.append((
+                "F12 - Afastamentos",
+                "Afastamentos/ano × Custo Médio",
+                f"{parametros.f12_afastamentos_ano} afast. × R${parametros.f12_custo_medio_afastamento:,.0f}",
+                v_afast,
+            ))
+            rows.append((
+                "F12 - Acidentes",
+                "Acidentes/ano × Custo Médio",
+                f"{parametros.f12_acidentes_com_lesao_ano} acid. × R${parametros.f12_custo_medio_acidente:,.0f}",
+                v_acid,
+            ))
+            rows.append((
+                "F12 - Risco Legal",
+                "Prob. Processo × Custo Estimado",
+                f"{(parametros.f12_probabilidade_processo or 0)*100:.0f}% × R${parametros.f12_custo_estimado_processo:,.0f}",
+                v_legal,
+            ))
+        v = resultados.breakdown_dor4.get("F13 - Frota de Empilhadeiras", 0)
+        if v > 0 and parametros.f13_num_empilhadeiras is not None:
+            rows.append((
+                "F13 - Frota Empilhadeiras",
+                "Nº Empilh. × (Op + Equip + Energ + Manut) × 12",
+                f"{parametros.f13_num_empilhadeiras} emp. × total mensal × 12",
+                v,
+            ))
+        if rows:
+            dors.append(("Detalhamento — Dor 4: Segurança e Ergonomia", rows))
+
+        # --- Dor 5 ---
+        rows = []
+        v = resultados.breakdown_dor5.get("F14 - Supervisão", 0)
+        if v > 0 and parametros.f14_num_supervisores is not None:
+            n_sup = parametros.f14_num_supervisores * processo.turnos_por_dia
+            sal_sup = parametros.f14_salario_supervisor or processo.salario_medio_supervisor
+            rows.append((
+                "F14 - Supervisão",
+                "Sup. (total turnos) × Salário × Encargos × 12",
+                f"{n_sup} sup. ({parametros.f14_num_supervisores}/turno × {processo.turnos_por_dia}t) × R${sal_sup:,.0f} × {fator:.2f} × 12",
+                v,
+            ))
+        v = resultados.breakdown_dor5.get("F15 - Compliance/EPIs", 0)
+        if v > 0 and parametros.f15_custo_epi_ano_por_pessoa is not None:
+            rows.append((
+                "F15 - Compliance/EPIs",
+                "Nº Op × (EPI/Ano + Exames/Ano)",
+                f"{n_op} op × (R${parametros.f15_custo_epi_ano_por_pessoa:,.0f} EPI + R${parametros.f15_custo_exames_ano_por_pessoa:,.0f} exames)",
+                v,
+            ))
+        v = resultados.breakdown_dor5.get("F16 - Energia e Utilidades", 0)
+        if v > 0 and parametros.f16_area_operacao_m2 is not None:
+            rows.append((
+                "F16 - Energia e Utilidades",
+                "Área (m²) × Custo Energia/m²/Ano",
+                f"{parametros.f16_area_operacao_m2:,.0f} m² × R${parametros.f16_custo_energia_m2_ano:,.2f}/m²/ano",
+                v,
+            ))
+        v = resultados.breakdown_dor5.get("F17 - Espaço Físico", 0)
+        if v > 0 and parametros.f17_area_m2 is not None:
+            pct = (parametros.f17_percentual_reducao_automacao or 0) * 100
+            rows.append((
+                "F17 - Espaço Físico",
+                "Área (m²) × Custo m²/Ano × % Redução",
+                f"{parametros.f17_area_m2:,.0f} m² × R${parametros.f17_custo_m2_ano:,.2f}/m²/ano × {pct:.0f}%",
+                v,
+            ))
+        v = resultados.breakdown_dor5.get("F18 - Gestão de Dados", 0)
+        if v > 0 and parametros.f18_pessoas_envolvidas is not None:
+            rows.append((
+                "F18 - Gestão de Dados",
+                "Pessoas × Horas/Dia × Custo Hora × Dias/Ano",
+                f"{parametros.f18_pessoas_envolvidas} pes. × {parametros.f18_horas_dia_tarefas_dados:.1f} h/dia × R${custo_hora_op:,.2f}/h × {processo.dias_operacao_ano} dias",
+                v,
+            ))
+        if rows:
+            dors.append(("Detalhamento — Dor 5: Custos Ocultos", rows))
+
+        return dors
+
+    def _slides_detalhamento_calculos(
+        self,
+        resultados: ResultadosFinanceiros,
+        processo: ProcessoAtual,
+        parametros: ParametrosDetalhados,
+    ):
+        """Gera um slide por Dor com tabela de detalhamento dos cálculos."""
+        dors = self._get_formula_details(resultados, processo, parametros)
+        if not dors:
+            return
+
+        for titulo, rows in dors:
+            slide = self._add_slide()
+            self._add_title_bar(slide, titulo)
+            self._add_subtitle(slide, "Metodologia de cálculo e valores aplicados")
+
+            # Cabeçalho + linhas de fórmulas + linha TOTAL
+            total_dor = sum(r[3] for r in rows)
+            table_data = [["Fórmula", "Metodologia", "Valores Aplicados", "Resultado Anual"]]
+            for formula, metodologia, valores, resultado in rows:
+                table_data.append([formula, metodologia, valores, self._fmt(resultado)])
+            table_data.append(["TOTAL", "", "", self._fmt(total_dor)])
+
+            n_rows = len(table_data)
+            row_h = 0.55
+            table_h = row_h * n_rows + 0.2
+
+            table = self._add_table(
+                slide,
+                Inches(0.5), Inches(1.9),
+                Inches(12.3), Inches(table_h),
+                n_rows, 4, table_data,
+                col_widths=[Inches(2.5), Inches(3.8), Inches(4.0), Inches(2.0)],
+            )
+
+            # Reduzir fonte para caber o conteúdo
+            for r in range(1, n_rows):
+                for c in range(4):
+                    cell = table.cell(r, c)
+                    for para in cell.text_frame.paragraphs:
+                        para.font.size = Pt(9)
+
+            # Destacar linha total
+            last = n_rows - 1
+            for c in range(4):
+                cell = table.cell(last, c)
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = AZUL_ESCURO
+                for para in cell.text_frame.paragraphs:
+                    para.font.bold = True
+                    para.font.color.rgb = BRANCO
+                    para.font.size = Pt(10)
+
     def _slide_13_escopo_tecnico(self):
         slide = self._add_slide()
         self._add_title_bar(slide, "Escopo Técnico da Solução")
@@ -700,32 +974,43 @@ class PPTXGenerator:
         )
         self._add_metric_box(
             slide, start_x + 2 * (box_w + gap), top, box_w, Inches(1.3),
-            "ROI 3 Anos", self._fmt_pct(resultados.roi_3_anos), color=VERDE,
+            "ROI 2 Anos", self._fmt_pct(resultados.roi_2_anos), color=VERDE,
         )
         self._add_metric_box(
             slide, start_x + 3 * (box_w + gap), top, box_w, Inches(1.3),
             "ROI 5 Anos", self._fmt_pct(resultados.roi_5_anos), color=VERDE,
         )
 
-        # Tabela comparativa
+        # Tabela comparativa (Ano 1 a 5)
         table_data = [
-            ["", "Investimento Médio", "Ganho Anual", "Ganho Acumulado"],
+            ["", "Investimento Médio", "Ganho Anual", "Ganho Acumulado", "ROI"],
             ["Ano 1",
              self._fmt(investimento.valor_investimento_medio),
              self._fmt(resultados.ganho_anual_potencial),
-             self._fmt(resultados.ganho_anual_potencial)],
+             self._fmt(resultados.ganho_anual_potencial),
+             self._fmt_pct(resultados.roi_1_ano)],
+            ["Ano 2", "—",
+             self._fmt(resultados.ganho_anual_potencial),
+             self._fmt(resultados.ganho_anual_potencial * 2),
+             self._fmt_pct(resultados.roi_2_anos)],
             ["Ano 3", "—",
              self._fmt(resultados.ganho_anual_potencial),
-             self._fmt(resultados.ganho_anual_potencial * 3)],
+             self._fmt(resultados.ganho_anual_potencial * 3),
+             self._fmt_pct(resultados.roi_3_anos)],
+            ["Ano 4", "—",
+             self._fmt(resultados.ganho_anual_potencial),
+             self._fmt(resultados.ganho_anual_potencial * 4),
+             self._fmt_pct(resultados.roi_4_anos)],
             ["Ano 5", "—",
              self._fmt(resultados.ganho_anual_potencial),
-             self._fmt(resultados.ganho_anual_potencial * 5)],
+             self._fmt(resultados.ganho_anual_potencial * 5),
+             self._fmt_pct(resultados.roi_5_anos)],
         ]
 
         self._add_table(
-            slide, Inches(1.5), Inches(4), Inches(10), Inches(2),
-            4, 4, table_data,
-            col_widths=[Inches(1.5), Inches(3), Inches(2.5), Inches(3)],
+            slide, Inches(1.0), Inches(3.8), Inches(11), Inches(2.5),
+            6, 5, table_data,
+            col_widths=[Inches(1.2), Inches(2.8), Inches(2.3), Inches(2.5), Inches(2.2)],
         )
 
     def _slide_16_proximas_etapas(self):

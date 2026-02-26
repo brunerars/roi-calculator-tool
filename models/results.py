@@ -51,8 +51,14 @@ class ResultadosFinanceiros:
     # Indicadores
     payback_anos: float
     roi_1_ano: float
+    roi_2_anos: float
     roi_3_anos: float
+    roi_4_anos: float
     roi_5_anos: float
+
+    # Bases de cálculo (para exibição no dashboard e PPTX)
+    custo_hora_parada: float
+    faturamento_mensal_linha: float
 
     # Breakdown por Dor (chaves como F01/F02/... e subchaves quando aplicável)
     breakdown_dor1: Dict[str, float]

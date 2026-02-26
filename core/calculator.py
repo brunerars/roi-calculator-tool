@@ -226,14 +226,14 @@ class ROICalculator:
             dor3.f10_paradas_linha = calcular_f10_paradas_linha(
                 paradas_mes=params.f10_paradas_mes,
                 duracao_media_horas=params.f10_duracao_media_parada_horas,
-                custo_hora_parada=params.f10_custo_hora_parada if params.f10_custo_hora_parada is not None else b.custo_hora_parada,
+                custo_hora_parada=params.f10_custo_hora_parada if (params.f10_custo_hora_parada is not None and params.f10_custo_hora_parada > 0) else b.custo_hora_parada,
             )
 
         if d.f11_setup_changeover and (params.f11_setups_mes is not None and params.f11_horas_por_setup is not None):
             dor3.f11_setup_changeover = calcular_f11_setup_changeover(
                 setups_mes=params.f11_setups_mes,
                 horas_setup=params.f11_horas_por_setup,
-                custo_hora_parada=params.f11_custo_hora_parada if params.f11_custo_hora_parada is not None else b.custo_hora_parada,
+                custo_hora_parada=params.f11_custo_hora_parada if (params.f11_custo_hora_parada is not None and params.f11_custo_hora_parada > 0) else b.custo_hora_parada,
             )
 
         dor3.total = dor3.f08_custo_oportunidade + dor3.f09_ociosidade + dor3.f10_paradas_linha + dor3.f11_setup_changeover
@@ -280,7 +280,7 @@ class ROICalculator:
         # --- Dor 5 ---
         if d.f14_supervisao and params.f14_num_supervisores is not None:
             dor5.f14_supervisao = calcular_f14_supervisao(
-                num_supervisores=params.f14_num_supervisores,
+                num_supervisores=params.f14_num_supervisores * p.turnos_por_dia,
                 salario_supervisor=params.f14_salario_supervisor or p.salario_medio_supervisor,
                 fator_encargos=fator_encargos,
             )
@@ -357,40 +357,42 @@ class ROICalculator:
             investimento_medio=investimento_medio,
             payback_anos=calcular_payback(investimento_medio, ganho_anual),
             roi_1_ano=calcular_roi(investimento_medio, ganho_anual, 1),
+            roi_2_anos=calcular_roi(investimento_medio, ganho_anual, 2),
             roi_3_anos=calcular_roi(investimento_medio, ganho_anual, 3),
+            roi_4_anos=calcular_roi(investimento_medio, ganho_anual, 4),
             roi_5_anos=calcular_roi(investimento_medio, ganho_anual, 5),
+            custo_hora_parada=b.custo_hora_parada,
+            faturamento_mensal_linha=p.faturamento_mensal_linha or 0.0,
             breakdown_dor1={
-                "F01": dor1.f01_mao_de_obra_direta,
-                "F02": dor1.f02_horas_extras,
-                "F03": dor1.f03_curva_aprendizagem,
-                "F04": dor1.f04_turnover,
+                "F01 - Mão de Obra Direta": dor1.f01_mao_de_obra_direta,
+                "F02 - Horas Extras": dor1.f02_horas_extras,
+                "F03 - Curva de Aprendizagem": dor1.f03_curva_aprendizagem,
+                "F04 - Turnover": dor1.f04_turnover,
             },
             breakdown_dor2={
-                "F05_refugo": dor2.f05_refugo,
-                "F05_retrabalho": dor2.f05_retrabalho,
-                "F05_total": dor2.f05_total,
-                "F06": dor2.f06_inspecao_manual,
-                "F07": dor2.f07_escapes_qualidade,
+                "F05 - Refugo": dor2.f05_refugo,
+                "F05 - Retrabalho": dor2.f05_retrabalho,
+                "F06 - Inspeção Manual": dor2.f06_inspecao_manual,
+                "F07 - Escapes de Qualidade": dor2.f07_escapes_qualidade,
             },
             breakdown_dor3={
-                "F08": dor3.f08_custo_oportunidade,
-                "F09": dor3.f09_ociosidade,
-                "F10": dor3.f10_paradas_linha,
-                "F11": dor3.f11_setup_changeover,
+                "F08 - Custo de Oportunidade": dor3.f08_custo_oportunidade,
+                "F09 - Ociosidade Silenciosa": dor3.f09_ociosidade,
+                "F10 - Paradas de Linha": dor3.f10_paradas_linha,
+                "F11 - Setup/Changeover": dor3.f11_setup_changeover,
             },
             breakdown_dor4={
-                "F12_afastamentos": dor4.f12_afastamentos,
-                "F12_acidentes": dor4.f12_acidentes,
-                "F12_risco_legal": dor4.f12_risco_legal,
-                "F12_total": dor4.f12_total,
-                "F13": dor4.f13_frota_empilhadeiras,
+                "F12 - Afastamentos": dor4.f12_afastamentos,
+                "F12 - Acidentes": dor4.f12_acidentes,
+                "F12 - Risco Legal": dor4.f12_risco_legal,
+                "F13 - Frota de Empilhadeiras": dor4.f13_frota_empilhadeiras,
             },
             breakdown_dor5={
-                "F14": dor5.f14_supervisao,
-                "F15": dor5.f15_compliance_epis,
-                "F16": dor5.f16_energia,
-                "F17": dor5.f17_espaco_fisico,
-                "F18": dor5.f18_gestao_dados,
+                "F14 - Supervisão": dor5.f14_supervisao,
+                "F15 - Compliance/EPIs": dor5.f15_compliance_epis,
+                "F16 - Energia e Utilidades": dor5.f16_energia,
+                "F17 - Espaço Físico": dor5.f17_espaco_fisico,
+                "F18 - Gestão de Dados": dor5.f18_gestao_dados,
             },
             area_atuacao=self.cliente.area_atuacao,
             porte_empresa=self.cliente.porte_empresa,

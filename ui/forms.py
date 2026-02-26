@@ -366,7 +366,7 @@ def render_parametros_detalhados(
     # Dor 5
     if dores.f14_supervisao:
         with st.expander("F14: Supervisão e Gestão", expanded=True):
-            params.f14_num_supervisores = st.number_input("Número de supervisores", min_value=0, value=1, step=1, key="p_f14_n")
+            params.f14_num_supervisores = st.number_input("Número de supervisores por turno", min_value=0, value=1, step=1, key="p_f14_n")
             params.f14_salario_supervisor = st.number_input(
                 "Salário do supervisor (R$)",
                 min_value=0.0,

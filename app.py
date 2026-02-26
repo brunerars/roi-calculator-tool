@@ -198,6 +198,7 @@ def _render_exportar():
                     resultados=st.session_state["resultados"],
                     metas=st.session_state["metas"],
                     investimento=st.session_state["investimento"],
+                    parametros=st.session_state.get("parametros"),
                 )
                 st.session_state["pptx_buffer"] = buffer
             except Exception as e:
@@ -236,7 +237,7 @@ def _run_calculo_e_dashboard():
 
         resultados = calc.calcular()
         st.session_state["resultados"] = resultados
-        render_dashboard(resultados)
+        render_dashboard(resultados, st.session_state["processo"], st.session_state["parametros"])
     except Exception as e:
         st.error(f"Erro no cálculo: {e}")
 
