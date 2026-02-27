@@ -18,6 +18,9 @@ from models.inputs import (
     ParametrosDetalhados,
 )
 from models.results import ResultadosFinanceiros, MetasReducao
+from config.areas import AREAS_ARV
+from config.constants import DIAS_OPERACAO_MES_DEFAULT, HORAS_MES_CLT, HORAS_MES_CUSTO_PRODUCAO
+from core.formulas import calcular_faturamento_mensal, calcular_horas_operacao_mes
 
 # Paleta de cores
 AZUL_ESCURO = RGBColor(0x1F, 0x4E, 0x79)
@@ -56,7 +59,7 @@ class PPTXGenerator:
         self._slide_01_capa(cliente)
         self._slide_02_agenda()
         self._slide_03_contexto(cliente)
-        self._slide_04_processo_atual(processo)
+        self._slide_04_processo_atual(processo, parametros)
         self._slide_05_dados_operacionais(processo, cliente)
         self._slide_06_analise_estrategica(dores)
         self._slide_07_cenario_critico(resultados)
@@ -295,7 +298,9 @@ class PPTXGenerator:
         )
         self._add_textbox(
             slide, Inches(6), Inches(3.2), Inches(5), Inches(0.4),
-            cliente.area_atuacao, font_size=14, color=CINZA_ESCURO,
+            AREAS_ARV.get(cliente.area_atuacao, {}).get("nome", cliente.area_atuacao),
+            font_size=14,
+            color=CINZA_ESCURO,
         )
 
         self._add_textbox(
@@ -304,7 +309,11 @@ class PPTXGenerator:
         )
         self._add_textbox(
             slide, Inches(6), Inches(3.8), Inches(5), Inches(0.4),
-            cliente.porte_empresa, font_size=14, color=CINZA_ESCURO,
+            {"pequena": "Pequena Empresa", "media": "Média Empresa", "grande": "Grande Empresa"}.get(
+                cliente.porte_empresa, cliente.porte_empresa
+            ),
+            font_size=14,
+            color=CINZA_ESCURO,
         )
 
         self._add_textbox(
@@ -326,7 +335,7 @@ class PPTXGenerator:
             font_size=14, color=CINZA_ESCURO,
         )
 
-    def _slide_04_processo_atual(self, processo: ProcessoAtual):
+    def _slide_04_processo_atual(self, processo: ProcessoAtual, parametros: ParametrosDetalhados | None = None):
         slide = self._add_slide()
         self._add_title_bar(slide, "Processo Atual — Parâmetros de Produção")
 
@@ -335,6 +344,28 @@ class PPTXGenerator:
             else f"{processo.cadencia_producao} peças/min"
         )
 
+        supervisores_turno = processo.supervisores_por_turno
+        supervisores_total = processo.supervisores_por_turno * processo.turnos_por_dia
+        if parametros is not None and parametros.f14_num_supervisores is not None:
+            supervisores_total = parametros.f14_num_supervisores
+            if (not supervisores_turno) and processo.turnos_por_dia:
+                # Inferência para exibição (não altera cálculo): total/turnos
+                supervisores_turno = round(supervisores_total / processo.turnos_por_dia, 2)
+
+        # Faturamento estimado vs usado (se houver preço de venda)
+        faturamento_estimado = calcular_faturamento_mensal(
+            cadencia_producao=processo.cadencia_producao,
+            producao_mensal=processo.producao_mensal,
+            horas_turno=processo.horas_por_turno,
+            turnos_dia=processo.turnos_por_dia,
+            dias_operacao_ano=processo.dias_operacao_ano,
+            preco_venda_peca=processo.preco_venda_peca,
+        )
+        faturamento_usado = processo.faturamento_mensal_linha or 0.0
+        faturamento_txt = self._fmt(faturamento_usado)
+        if faturamento_estimado > 0 and abs(faturamento_usado - faturamento_estimado) > 1:
+            faturamento_txt = f"{self._fmt(faturamento_usado)} (usado) | {self._fmt(faturamento_estimado)} (estimado)"
+
         dados = [
             ("Produção informada", prod_txt),
             ("Horas por Turno", f"{processo.horas_por_turno}h"),
@@ -342,9 +373,12 @@ class PPTXGenerator:
             ("Dias de Operação por Ano", str(processo.dias_operacao_ano)),
             ("Operadores no Processo (por turno)", str(processo.pessoas_processo_turno)),
             ("Inspetores (por turno)", str(processo.pessoas_inspecao_turno)),
+            ("Supervisores (por turno)", str(supervisores_turno)),
+            ("Supervisores (total)", str(supervisores_total)),
             ("Salário Médio Operador", self._fmt(processo.salario_medio_operador)),
             ("Custo Matéria-Prima/Peça", self._fmt(processo.custo_materia_prima_peca)),
-            ("Faturamento Mensal da Linha", self._fmt(processo.faturamento_mensal_linha or 0.0)),
+            ("Preço de Venda por Peça", self._fmt(processo.preco_venda_peca or 0.0)),
+            ("Faturamento Mensal da Linha", faturamento_txt),
         ]
 
         table_data = [["Parâmetro", "Valor"]] + [[d[0], d[1]] for d in dados]
@@ -365,9 +399,16 @@ class PPTXGenerator:
             prod_anual = cad * 60 * processo.horas_por_turno * processo.turnos_por_dia * processo.dias_operacao_ano
 
         horas_anuais = processo.horas_por_turno * processo.turnos_por_dia * processo.dias_operacao_ano
+        horas_mes_operacao = calcular_horas_operacao_mes(
+            float(processo.horas_por_turno),
+            int(processo.turnos_por_dia),
+            int(processo.dias_operacao_ano),
+        )
         pessoas_total = processo.pessoas_processo_turno * processo.turnos_por_dia
-        custo_hora_operador = (processo.salario_medio_operador * cliente.fator_encargos) / 176
-        custo_hora_parada = (processo.faturamento_mensal_linha or 0.0) / 176
+        custo_hora_operador = (processo.salario_medio_operador * cliente.fator_encargos) / HORAS_MES_CUSTO_PRODUCAO
+        custo_hora_parada = (
+            ((processo.faturamento_mensal_linha or 0.0) / horas_mes_operacao) if horas_mes_operacao > 0 else 0.0
+        )
 
         box_w = Inches(3.5)
         box_h = Inches(1.2)
@@ -399,6 +440,23 @@ class PPTXGenerator:
             slide, start_x + 2 * (box_w + gap), Inches(3.8), box_w, box_h,
             "Faturamento Mensal da Linha",
             self._fmt(processo.faturamento_mensal_linha or 0.0),
+        )
+
+        premissas_txt = (
+            f"Premissas: Custo hora operador = (salário × encargos) ÷ {HORAS_MES_CUSTO_PRODUCAO}h. "
+            f"Hora base HE (CLT) = ÷ {HORAS_MES_CLT}h. "
+            f"Hora parada = faturamento mensal ÷ {horas_mes_operacao:,.0f}h/mês "
+            f"(horas_turno × turnos × dias_ano/12)."
+        )
+        self._add_textbox(
+            slide,
+            Inches(0.8),
+            Inches(6.3),
+            Inches(12.0),
+            Inches(0.6),
+            premissas_txt,
+            font_size=10,
+            color=CINZA_MEDIO,
         )
 
     def _slide_06_analise_estrategica(self, dores: DoresSelecionadas):
@@ -634,7 +692,8 @@ class PPTXGenerator:
         chp = resultados.custo_hora_parada
         n_op = processo.pessoas_processo_turno * processo.turnos_por_dia
         n_insp = processo.pessoas_inspecao_turno * processo.turnos_por_dia
-        custo_hora_op = (processo.salario_medio_operador * fator) / 176
+        custo_hora_op = (processo.salario_medio_operador * fator) / HORAS_MES_CUSTO_PRODUCAO
+        custo_hora_he = (processo.salario_medio_operador * fator) / HORAS_MES_CLT
 
         dors = []
 
@@ -653,15 +712,29 @@ class PPTXGenerator:
             rows.append((
                 "F02 - Horas Extras",
                 "Op × HE/mês × Custo Hora × 1,5 × 12",
-                f"{n_op} op × {parametros.f02_media_he_mes_por_pessoa:.0f} HE × R${custo_hora_op:,.2f}/h × 1,5 × 12",
+                f"{n_op} op × {parametros.f02_media_he_mes_por_pessoa:.0f} HE × R${custo_hora_he:,.2f}/h × 1,5 × 12",
                 v,
             ))
         v = resultados.breakdown_dor1.get("F03 - Curva de Aprendizagem", 0)
         if v > 0 and parametros.f03_novas_contratacoes_ano:
+            meses = parametros.f03_meses_curva or 0
+            sal_nov = parametros.f03_salario_novato or processo.salario_medio_operador
+            sal_sup = parametros.f03_salario_supervisor or processo.salario_medio_supervisor
+            pct_sup = parametros.f03_percentual_tempo_supervisor or 0.0
+
+            custo_novato = sal_nov * fator * meses
+            custo_supervisor = sal_sup * fator * pct_sup * meses
+            custo_por_contrat = custo_novato + custo_supervisor
+
             rows.append((
                 "F03 - Curva de Aprendizagem",
                 "Contrat. × (Custo Novato + Custo Supervisor treinando)",
-                f"{parametros.f03_novas_contratacoes_ano} contrat. × {parametros.f03_meses_curva or '?'} meses de curva",
+                (
+                    f"Novato: R${custo_novato:,.0f} | "
+                    f"Sup.: R${custo_supervisor:,.0f} | "
+                    f"Por contrat.: R${custo_por_contrat:,.0f}\n"
+                    f"{parametros.f03_novas_contratacoes_ano} × R${custo_por_contrat:,.0f}"
+                ),
                 v,
             ))
         v = resultados.breakdown_dor1.get("F04 - Turnover", 0)

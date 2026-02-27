@@ -81,10 +81,26 @@ def validar_investimento(investimento: InvestimentoAutomacao) -> List[str]:
     return erros
 
 
-def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSelecionadas) -> List[str]:
+def validar_parametros_detalhados(
+    params: ParametrosDetalhados,
+    dores: DoresSelecionadas,
+    processo: ProcessoAtual,
+) -> List[str]:
     """Valida parâmetros detalhados (V2.0), de forma condicional às fórmulas selecionadas."""
 
     erros: List[str] = []
+
+    def _normalize_fraction(campo: str):
+        """
+        Normaliza percentuais aceitando:
+        - fração (0–1): mantém
+        - percentual (0–100): converte para 0–1
+        """
+        valor = getattr(params, campo)
+        if valor is None:
+            return
+        if valor > 1 and valor <= 100:
+            setattr(params, campo, valor / 100)
 
     def _req(campo: str, rotulo: str):
         if getattr(params, campo) is None:
@@ -114,6 +130,7 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
         _nonneg("f03_novas_contratacoes_ano", "F03: Novas contratações por ano")
         _nonneg("f03_salario_novato", "F03: Salário do novato")
         _nonneg("f03_meses_curva", "F03: Meses de curva de aprendizagem")
+        _normalize_fraction("f03_percentual_tempo_supervisor")
         _fraction("f03_percentual_tempo_supervisor", "F03: Percentual de tempo do supervisor")
         _nonneg("f03_salario_supervisor", "F03: Salário do supervisor")
 
@@ -128,6 +145,8 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
         _req("f05_percentual_refugo", "F05: Percentual de refugo")
         _req("f05_percentual_retrabalho", "F05: Percentual de retrabalho")
         _req("f05_horas_retrabalho_por_unidade", "F05: Horas de retrabalho por unidade")
+        _normalize_fraction("f05_percentual_refugo")
+        _normalize_fraction("f05_percentual_retrabalho")
         _fraction("f05_percentual_refugo", "F05: Percentual de refugo")
         _fraction("f05_percentual_retrabalho", "F05: Percentual de retrabalho")
         _nonneg("f05_horas_retrabalho_por_unidade", "F05: Horas de retrabalho por unidade")
@@ -143,8 +162,12 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
     if dores.f08_custo_oportunidade:
         _req("f08_percentual_demanda_reprimida", "F08: Percentual de demanda reprimida")
         _req("f08_margem_contribuicao", "F08: Margem de contribuição")
+        _normalize_fraction("f08_percentual_demanda_reprimida")
+        _normalize_fraction("f08_margem_contribuicao")
         _fraction("f08_percentual_demanda_reprimida", "F08: Percentual de demanda reprimida")
         _fraction("f08_margem_contribuicao", "F08: Margem de contribuição")
+        if not processo.faturamento_mensal_linha:
+            erros.append("F08: Informe o faturamento mensal da linha (senão a fórmula fica zerada).")
 
     # F09
     if dores.f09_ociosidade_silenciosa:
@@ -158,6 +181,8 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
         _nonneg("f10_paradas_mes", "F10: Paradas por mês")
         _nonneg("f10_duracao_media_parada_horas", "F10: Duração média da parada (h)")
         _nonneg("f10_custo_hora_parada", "F10: Custo hora parada (se informado)")
+        if (not processo.faturamento_mensal_linha) and not (params.f10_custo_hora_parada and params.f10_custo_hora_parada > 0):
+            erros.append("F10: Informe faturamento mensal da linha ou preencha um Custo hora parada (> 0).")
 
     # F11
     if dores.f11_setup_changeover:
@@ -166,6 +191,8 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
         _nonneg("f11_setups_mes", "F11: Setups por mês")
         _nonneg("f11_horas_por_setup", "F11: Horas por setup")
         _nonneg("f11_custo_hora_parada", "F11: Custo hora parada (se informado)")
+        if (not processo.faturamento_mensal_linha) and not (params.f11_custo_hora_parada and params.f11_custo_hora_parada > 0):
+            erros.append("F11: Informe faturamento mensal da linha ou preencha um Custo hora parada (> 0).")
 
     # F12
     if dores.f12_riscos_acidentes:
@@ -179,6 +206,7 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
         _nonneg("f12_custo_medio_afastamento", "F12: Custo médio por afastamento")
         _nonneg("f12_acidentes_com_lesao_ano", "F12: Acidentes com lesão por ano")
         _nonneg("f12_custo_medio_acidente", "F12: Custo médio por acidente")
+        _normalize_fraction("f12_probabilidade_processo")
         _fraction("f12_probabilidade_processo", "F12: Probabilidade de processo")
         _nonneg("f12_custo_estimado_processo", "F12: Custo estimado do processo")
 
@@ -195,9 +223,8 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
         _nonneg("f13_custo_energia_mes", "F13: Custo energia/mês")
         _nonneg("f13_custo_manutencao_mes", "F13: Custo manutenção/mês")
 
-    # F14
+    # F14 — 0 supervisores é válido (F14 = R$0 nesse cenário)
     if dores.f14_supervisao:
-        _req("f14_num_supervisores", "F14: Número de supervisores")
         _nonneg("f14_num_supervisores", "F14: Número de supervisores")
         _nonneg("f14_salario_supervisor", "F14: Salário do supervisor (se informado)")
 
@@ -222,6 +249,7 @@ def validar_parametros_detalhados(params: ParametrosDetalhados, dores: DoresSele
         _req("f17_percentual_reducao_automacao", "F17: Percentual de redução com automação")
         _nonneg("f17_area_m2", "F17: Área (m²)")
         _nonneg("f17_custo_m2_ano", "F17: Custo m²/ano")
+        _normalize_fraction("f17_percentual_reducao_automacao")
         _fraction("f17_percentual_reducao_automacao", "F17: Percentual de redução com automação")
 
     # F18

@@ -6,7 +6,7 @@ Orquestra as fórmulas F01–F18 e gera resultados consolidados por 5 Dores.
 
 from __future__ import annotations
 
-from config.constants import DIAS_OPERACAO_MES_DEFAULT, FATOR_CUSTO_TURNOVER_DEFAULT
+from config.constants import FATOR_CUSTO_TURNOVER_DEFAULT
 from core.formulas import (
     calcular_custo_hora_operador,
     calcular_custo_hora_parada,
@@ -29,11 +29,11 @@ from core.formulas import (
     calcular_f17_espaco_fisico,
     calcular_f18_gestao_dados,
     calcular_ganho_anual,
+    calcular_horas_operacao_mes,
     calcular_horas_anuais,
     calcular_payback,
     calcular_pessoas_expostas,
     calcular_producao_anual,
-    calcular_producao_mensal_from_cadencia,
     calcular_roi,
 )
 from models.calculations import (
@@ -77,26 +77,26 @@ class ROICalculator:
         pessoas_processo = calcular_pessoas_expostas(p.pessoas_processo_turno, p.turnos_por_dia)
         pessoas_inspecao = calcular_pessoas_expostas(p.pessoas_inspecao_turno, p.turnos_por_dia)
 
-        # Produção mensal/anual: usa produção mensal informada; senão, estima via cadência.
+        # Produção mensal/anual:
+        # - se o usuário informa produção mensal, respeitamos.
+        # - se estimamos via cadência, derivamos a mensal de (anual/12) para manter consistência matemática
+        #   com `dias_operacao_ano` (evita diferenças do tipo 21 dias/mês vs 250 dias/ano).
         if p.producao_mensal is not None and p.producao_mensal > 0:
             producao_mensal = p.producao_mensal
             producao_anual = producao_mensal * 12
         elif p.cadencia_producao is not None and p.cadencia_producao > 0:
-            producao_mensal = calcular_producao_mensal_from_cadencia(
-                p.cadencia_producao,
-                p.horas_por_turno,
-                p.turnos_por_dia,
-                dias_mes=DIAS_OPERACAO_MES_DEFAULT,
-            )
             producao_anual = calcular_producao_anual(
                 p.cadencia_producao,
                 p.horas_por_turno,
                 p.turnos_por_dia,
                 p.dias_operacao_ano,
             )
+            producao_mensal = producao_anual / 12
         else:
             producao_mensal = 0.0
             producao_anual = 0.0
+
+        horas_operacao_mes = calcular_horas_operacao_mes(p.horas_por_turno, p.turnos_por_dia, p.dias_operacao_ano)
 
         return BasesComuns(
             producao_anual=producao_anual,
@@ -105,7 +105,7 @@ class ROICalculator:
             pessoas_expostas_processo=pessoas_processo,
             pessoas_expostas_inspecao=pessoas_inspecao,
             custo_hora_operador=calcular_custo_hora_operador(p.salario_medio_operador, fator_encargos),
-            custo_hora_parada=calcular_custo_hora_parada(p.faturamento_mensal_linha),
+            custo_hora_parada=calcular_custo_hora_parada(p.faturamento_mensal_linha, horas_operacao_mes),
             fator_encargos=fator_encargos,
         )
 
@@ -278,9 +278,16 @@ class ROICalculator:
         dor4.total = dor4.f12_total + dor4.f13_frota_empilhadeiras
 
         # --- Dor 5 ---
-        if d.f14_supervisao and params.f14_num_supervisores is not None:
+        # F14: `f14_num_supervisores` é tratado como TOTAL (não por turno).
+        # Se não for informado, derivamos de `supervisores_por_turno × turnos_por_dia`.
+        total_supervisores = (
+            params.f14_num_supervisores
+            if params.f14_num_supervisores is not None
+            else (p.supervisores_por_turno * p.turnos_por_dia)
+        )
+        if d.f14_supervisao and total_supervisores > 0:
             dor5.f14_supervisao = calcular_f14_supervisao(
-                num_supervisores=params.f14_num_supervisores * p.turnos_por_dia,
+                num_supervisores=total_supervisores,
                 salario_supervisor=params.f14_salario_supervisor or p.salario_medio_supervisor,
                 fator_encargos=fator_encargos,
             )

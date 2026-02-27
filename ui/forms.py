@@ -23,6 +23,7 @@ from models.inputs import (
     InvestimentoAutomacao,
 )
 from models.results import MetasReducao
+from core.formulas import calcular_faturamento_mensal, calcular_horas_operacao_mes
 
 
 def render_dados_basicos() -> tuple[ClienteBasicInfo, ProcessoAtual]:
@@ -89,14 +90,7 @@ def render_dados_basicos() -> tuple[ClienteBasicInfo, ProcessoAtual]:
     with col2:
         pessoas_processo = st.number_input("Operadores no Processo por Turno", min_value=0, value=5, key="pessoas_processo")
         pessoas_inspecao = st.number_input("Inspetores por Turno", min_value=0, value=1, key="pessoas_inspecao")
-        faturamento_mensal = st.number_input(
-            "Faturamento Mensal da Linha (R$) — para Custo Hora Parada",
-            min_value=0.0,
-            value=0.0,
-            step=10_000.0,
-            key="faturamento_mensal_linha",
-        )
-        st.caption(f"Custo hora parada estimado: R$ {(faturamento_mensal / HORAS_MES_CUSTO_PRODUCAO) if faturamento_mensal else 0:,.2f}")
+        supervisores = st.number_input("Supervisores por Turno", min_value=0, value=0, step=1, key="supervisores_por_turno")
 
     with col3:
         salario_operador = st.number_input("Salário Médio Operador (R$ bruto)", min_value=0.0, value=SALARIO_OPERADOR_DEFAULT, step=100.0, key="salario_operador")
@@ -105,6 +99,77 @@ def render_dados_basicos() -> tuple[ClienteBasicInfo, ProcessoAtual]:
 
         custo_unitario = st.number_input("Custo Unitário da Peça (R$)", min_value=0.0, value=100.0, step=1.0, key="custo_unitario_peca")
         custo_mp = st.number_input("Custo Matéria-Prima por Peça (R$)", min_value=0.0, value=15.0, step=0.5, key="custo_mp_peca")
+        preco_venda = st.number_input("Preço de Venda por Peça (R$)", min_value=0.0, value=0.0, step=1.0, key="preco_venda_peca",
+                                      help="Usado para calcular o Faturamento Mensal e o Custo Hora Parada automaticamente.")
+
+    # Faturamento mensal estimado (pré-preenchimento)
+    faturamento_calc = calcular_faturamento_mensal(
+        cadencia_producao=cadencia,
+        producao_mensal=producao_mensal,
+        horas_turno=horas_turno,
+        turnos_dia=int(turnos_dia),
+        dias_operacao_ano=int(dias_ano),
+        preco_venda_peca=preco_venda if preco_venda > 0 else None,
+    )
+
+    if "faturamento_usar_auto" not in st.session_state:
+        st.session_state["faturamento_usar_auto"] = faturamento_calc > 0
+
+    if "faturamento_mensal_linha_manual" not in st.session_state:
+        st.session_state["faturamento_mensal_linha_manual"] = float(faturamento_calc) if faturamento_calc > 0 else 0.0
+
+    auto_disponivel = faturamento_calc > 0
+    if not auto_disponivel and st.session_state.get("faturamento_usar_auto") is True:
+        st.session_state["faturamento_usar_auto"] = False
+
+    usar_auto = st.checkbox(
+        "Usar faturamento calculado automaticamente",
+        key="faturamento_usar_auto",
+        disabled=not auto_disponivel,
+        help=(
+            "Quando marcado, o valor usado será o faturamento estimado a partir do Preço de Venda e da produção. "
+            "Para habilitar esta opção, informe o **Preço de Venda por Peça** (> 0)."
+        ),
+    )
+
+    faturamento_manual = st.number_input(
+        "Faturamento Mensal da Linha (R$)",
+        min_value=0.0,
+        step=10_000.0,
+        key="faturamento_mensal_linha_manual",
+        disabled=usar_auto,
+        help="Se o auto-cálculo estiver desligado, este valor manual será usado (e permanecerá salvo durante a sessão).",
+    )
+
+    faturamento_usado = float(faturamento_calc) if (usar_auto and faturamento_calc > 0) else float(faturamento_manual)
+
+    if usar_auto and not auto_disponivel:
+        st.error("Para usar o faturamento calculado automaticamente, informe o **Preço de Venda por Peça** (> 0).")
+
+    if faturamento_usado <= 0:
+        st.warning(
+            "⚠️ Sem faturamento informado, as fórmulas **F08**, **F10** e **F11** ficarão zeradas.\n\n"
+            "Informe o **Preço de Venda por Peça** (para auto-cálculo) ou preencha o **Faturamento Mensal da Linha** manualmente."
+        )
+
+    if faturamento_usado > 0:
+        horas_op_mes = calcular_horas_operacao_mes(float(horas_turno), int(turnos_dia), int(dias_ano))
+        chp_calc = (faturamento_usado / horas_op_mes) if horas_op_mes > 0 else 0.0
+        col_f, col_c = st.columns(2)
+        with col_f:
+            if faturamento_calc > 0 and abs(faturamento_usado - faturamento_calc) > 1:
+                st.metric("📊 Faturamento Mensal (usado)", f"R$ {faturamento_usado:,.0f}")
+                st.caption(f"Estimado: R$ {faturamento_calc:,.0f}")
+            else:
+                st.metric("📊 Faturamento Mensal", f"R$ {faturamento_usado:,.0f}")
+        with col_c:
+            st.metric(
+                "⏱ Custo Hora Parada",
+                f"R$ {chp_calc:,.2f}/h",
+                help=f"R$ {faturamento_usado:,.0f} ÷ {horas_op_mes:,.0f}h/mês (horas_turno × turnos × dias_ano/12)",
+            )
+    else:
+        st.caption("Informe o Preço de Venda por Peça para calcular automaticamente o faturamento e o custo hora parada.")
 
     processo = ProcessoAtual(
         cadencia_producao=cadencia,
@@ -114,12 +179,14 @@ def render_dados_basicos() -> tuple[ClienteBasicInfo, ProcessoAtual]:
         dias_operacao_ano=dias_ano,
         pessoas_processo_turno=pessoas_processo,
         pessoas_inspecao_turno=pessoas_inspecao,
+        supervisores_por_turno=supervisores,
         salario_medio_operador=salario_operador,
         salario_medio_inspetor=salario_inspetor,
         salario_medio_supervisor=salario_supervisor,
         custo_unitario_peca=custo_unitario,
         custo_materia_prima_peca=custo_mp,
-        faturamento_mensal_linha=faturamento_mensal if faturamento_mensal > 0 else None,
+        preco_venda_peca=preco_venda if preco_venda > 0 else None,
+        faturamento_mensal_linha=faturamento_usado if faturamento_usado > 0 else None,
     )
 
     return cliente, processo
@@ -296,7 +363,7 @@ def render_parametros_detalhados(
     if dores.f09_ociosidade_silenciosa:
         with st.expander("F09: Ociosidade Silenciosa", expanded=True):
             params.f09_minutos_ociosos_por_dia = st.number_input(
-                "Minutos ociosos por dia (min)",
+                "Minutos ociosos por dia por operador (min)",
                 min_value=0.0,
                 value=15.0,
                 step=1.0,
@@ -309,11 +376,20 @@ def render_parametros_detalhados(
             params.f10_duracao_media_parada_horas = st.number_input(
                 "Duração média por parada (h)", min_value=0.0, value=1.0, step=0.25, key="p_f10_dur"
             )
-            default_chp = (processo.faturamento_mensal_linha or 0.0) / HORAS_MES_CUSTO_PRODUCAO
+            horas_op_mes = calcular_horas_operacao_mes(
+                float(processo.horas_por_turno),
+                int(processo.turnos_por_dia),
+                int(processo.dias_operacao_ano),
+            )
+            chp_derivado = ((processo.faturamento_mensal_linha or 0.0) / horas_op_mes) if horas_op_mes > 0 else 0.0
+            st.caption(
+                f"CHP derivado do faturamento (horas reais): **R$ {chp_derivado:,.2f}/h** "
+                f"(÷ {horas_op_mes:,.0f}h/mês). Preencha manualmente apenas se quiser sobrepor."
+            )
             params.f10_custo_hora_parada = st.number_input(
-                "Custo hora parada (R$/h) — deixe como 0 para usar o faturamento",
+                "Custo hora parada manual (R$/h) — deixe como 0 para usar o CHP derivado",
                 min_value=0.0,
-                value=float(default_chp),
+                value=0.0,
                 step=10.0,
                 key="p_f10_chp",
             )
@@ -322,11 +398,20 @@ def render_parametros_detalhados(
         with st.expander("F11: Setup / Changeover", expanded=True):
             params.f11_setups_mes = st.number_input("Setups por mês", min_value=0, value=10, step=1, key="p_f11_set")
             params.f11_horas_por_setup = st.number_input("Horas por setup (h)", min_value=0.0, value=0.5, step=0.25, key="p_f11_h")
-            default_chp = (processo.faturamento_mensal_linha or 0.0) / HORAS_MES_CUSTO_PRODUCAO
+            horas_op_mes = calcular_horas_operacao_mes(
+                float(processo.horas_por_turno),
+                int(processo.turnos_por_dia),
+                int(processo.dias_operacao_ano),
+            )
+            chp_derivado = ((processo.faturamento_mensal_linha or 0.0) / horas_op_mes) if horas_op_mes > 0 else 0.0
+            st.caption(
+                f"CHP derivado do faturamento (horas reais): **R$ {chp_derivado:,.2f}/h** "
+                f"(÷ {horas_op_mes:,.0f}h/mês). Preencha manualmente apenas se quiser sobrepor."
+            )
             params.f11_custo_hora_parada = st.number_input(
-                "Custo hora parada (R$/h) — deixe como 0 para usar o faturamento",
+                "Custo hora parada manual (R$/h) — deixe como 0 para usar o CHP derivado",
                 min_value=0.0,
-                value=float(default_chp),
+                value=0.0,
                 step=10.0,
                 key="p_f11_chp",
             )
@@ -366,7 +451,16 @@ def render_parametros_detalhados(
     # Dor 5
     if dores.f14_supervisao:
         with st.expander("F14: Supervisão e Gestão", expanded=True):
-            params.f14_num_supervisores = st.number_input("Número de supervisores por turno", min_value=0, value=1, step=1, key="p_f14_n")
+            total_default = processo.supervisores_por_turno * processo.turnos_por_dia
+            total_sup = st.number_input(
+                "Total de supervisores na planta (todos os turnos)",
+                min_value=0,
+                value=int(total_default),
+                step=1,
+                key="p_f14_n",
+                help="Número total de supervisores dedicados ao processo (soma de todos os turnos). Se 0, o custo de supervisão será R$0.",
+            )
+            params.f14_num_supervisores = int(total_sup)
             params.f14_salario_supervisor = st.number_input(
                 "Salário do supervisor (R$)",
                 min_value=0.0,

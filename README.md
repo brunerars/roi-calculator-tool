@@ -8,8 +8,11 @@ Ferramenta web (Streamlit) para acelerar propostas comerciais de automação ind
 - **Estrutura**: **5 Dores** + **18 fórmulas** (F01–F18).
 - **Premissas CFO-friendly**:
   - **Encargos trabalhistas selecionáveis**: 1,7 / 1,85 / 2,0
-  - **Custo-hora operador**: divisor **176h** (220h apenas quando aplicável a HE/CLT)
-  - **Custo-hora parada**: baseado em **faturamento mensal / 176**
+  - **Custo-hora operador (custeio)**: divisor **176h**
+  - **Horas extras (CLT)**: hora base com divisor **220h** (+ adicional de 50%)
+  - **Custo-hora parada (CHP)**: baseado em **horas reais de operação do processo**:
+    - \( CHP = \frac{faturamento\_mensal}{horas\_turno \times turnos\_dia \times (dias\_ano/12)} \)
+  - **Percentuais**: o sistema valida/normaliza campos críticos para evitar erros de unidade (ex.: 10% digitado como `10` → `0.10`).
 
 ## Funcionalidades
 
@@ -17,7 +20,8 @@ Ferramenta web (Streamlit) para acelerar propostas comerciais de automação ind
 - **Seleção de Área ARV** com **pré-seleção** de fórmulas aplicáveis
 - Parâmetros detalhados condicionais por fórmula (F01–F18)
 - Metas de redução por fórmula
-- Dashboard: Custo total anual, ganho anual potencial, payback, ROI (1/3/5 anos) + breakdown por Dor e por fórmula
+- Faturamento mensal pode ser **auto-calculado** (via preço de venda) com opção de **override manual** (checkbox)
+- Dashboard: Custo total anual, ganho anual potencial, payback, ROI (1–5 anos) + breakdown por Dor e por fórmula
 - Exportação de **PPTX** programático (16+ slides) com narrativa “Custo da Inação”
 
 ## Stack

@@ -6,6 +6,7 @@ import pytest
 from core.formulas import (
     calcular_producao_anual,
     calcular_producao_mensal_from_cadencia,
+    calcular_faturamento_mensal,
     calcular_horas_anuais,
     calcular_pessoas_expostas,
     calcular_custo_hora_operador,
@@ -41,6 +42,34 @@ class TestBasesComuns:
     def test_custo_hora_operador(self):
         # (2500 × 1,7) / 176 ≈ 24,15
         assert calcular_custo_hora_operador(2500, 1.7) == pytest.approx(24.1477, rel=1e-3)
+
+    def test_faturamento_mensal_por_producao_mensal(self):
+        assert (
+            calcular_faturamento_mensal(
+                cadencia_producao=None,
+                producao_mensal=200_000,
+                horas_turno=8,
+                turnos_dia=2,
+                dias_operacao_ano=250,
+                preco_venda_peca=10,
+            )
+            == 2_000_000
+        )
+
+    def test_faturamento_mensal_por_cadencia(self):
+        # Produção anual: 10×60×8×2×250 = 2.400.000
+        # Faturamento anual: × R$10 = 24.000.000 → mensal /12 = 2.000.000
+        assert (
+            calcular_faturamento_mensal(
+                cadencia_producao=10,
+                producao_mensal=None,
+                horas_turno=8,
+                turnos_dia=2,
+                dias_operacao_ano=250,
+                preco_venda_peca=10,
+            )
+            == 2_000_000
+        )
 
 
 class TestExemplosCLAUDEMD:

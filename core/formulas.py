@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from config.constants import HORAS_MES_CUSTO_PRODUCAO
+from config.constants import DIAS_OPERACAO_MES_DEFAULT, HORAS_MES_CUSTO_PRODUCAO, HORAS_MES_CLT
 
 
 # =============================================================================
@@ -34,10 +34,51 @@ def calcular_producao_mensal_from_cadencia(
     return cadencia * 60 * horas_turno * turnos_dia * dias_mes
 
 
+def calcular_faturamento_mensal(
+    *,
+    cadencia_producao: float | None,
+    producao_mensal: float | None,
+    horas_turno: float,
+    turnos_dia: int,
+    dias_operacao_ano: int,
+    preco_venda_peca: float | None,
+) -> float:
+    """
+    Faturamento mensal estimado.
+
+    Se houver produção mensal informada: Produção Mensal × Preço Venda
+    Senão, se houver cadência: (Cadência × 60 × Horas/Turno × Turnos/Dia × Dias/Ano × Preço Venda) ÷ 12
+    """
+
+    if not preco_venda_peca or preco_venda_peca <= 0:
+        return 0.0
+
+    if producao_mensal is not None and producao_mensal > 0:
+        return producao_mensal * preco_venda_peca
+
+    if cadencia_producao is not None and cadencia_producao > 0 and dias_operacao_ano > 0:
+        producao_anual = calcular_producao_anual(cadencia_producao, horas_turno, turnos_dia, dias_operacao_ano)
+        return (producao_anual * preco_venda_peca) / 12
+
+    return 0.0
+
+
 def calcular_horas_anuais(horas_turno: float, turnos_dia: int, dias_ano: int) -> float:
     """Horas anuais de operação."""
 
     return horas_turno * turnos_dia * dias_ano
+
+
+def calcular_horas_operacao_mes(horas_turno: float, turnos_dia: int, dias_operacao_ano: int) -> float:
+    """
+    Horas mensais de operação equivalentes do processo.
+
+    Usamos `dias_operacao_ano/12` para refletir o regime real de operação.
+    Se `dias_operacao_ano` não estiver disponível, usamos `DIAS_OPERACAO_MES_DEFAULT`.
+    """
+
+    dias_mes_equivalente = (dias_operacao_ano / 12) if dias_operacao_ano else DIAS_OPERACAO_MES_DEFAULT
+    return horas_turno * turnos_dia * dias_mes_equivalente
 
 
 def calcular_pessoas_expostas(pessoas_turno: int, turnos_dia: int) -> int:
@@ -56,15 +97,18 @@ def calcular_custo_hora_operador(salario: float, fator_encargos: float) -> float
     return (salario * fator_encargos) / HORAS_MES_CUSTO_PRODUCAO
 
 
-def calcular_custo_hora_parada(faturamento_mensal: float | None) -> float:
+def calcular_custo_hora_parada(
+    faturamento_mensal: float | None,
+    horas_operacao_mes: float,
+) -> float:
     """
     Custo de oportunidade da hora parada (Regra #3).
-    Fórmula: Faturamento Mensal ÷ 176 horas úteis
+    Fórmula: Faturamento Mensal ÷ Horas mensais reais de operação do processo.
     """
 
-    if faturamento_mensal is None or faturamento_mensal == 0:
+    if not faturamento_mensal or horas_operacao_mes <= 0:
         return 0.0
-    return faturamento_mensal / HORAS_MES_CUSTO_PRODUCAO
+    return faturamento_mensal / horas_operacao_mes
 
 
 # =============================================================================
@@ -87,7 +131,8 @@ def calcular_f02_horas_extras(num_operadores: int, media_he_mes: float, salario_
     Fórmula: Nº Operadores × HE/mês × Custo Hora com Encargos × 1,5 × 12
     """
 
-    custo_hora = (salario_medio * fator_encargos) / HORAS_MES_CUSTO_PRODUCAO
+    # Regra #2: HE usa hora base CLT (220h)
+    custo_hora = (salario_medio * fator_encargos) / HORAS_MES_CLT
     return num_operadores * media_he_mes * custo_hora * 1.5 * 12
 
 

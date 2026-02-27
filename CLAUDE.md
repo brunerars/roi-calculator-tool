@@ -276,6 +276,7 @@ class ProcessoAtual:
     # Pessoas
     pessoas_processo_turno: int = 5  # operadores por turno
     pessoas_inspecao_turno: int = 1  # inspetores por turno
+    pessoas_supervisao_turno: int = 0  # supervisores por turno (usado em F14)
     
     # Custos unitários
     salario_medio_operador: float = 2500.0  # R$ bruto
@@ -283,9 +284,15 @@ class ProcessoAtual:
     salario_medio_supervisor: float = 5000.0  # R$ bruto
     custo_unitario_peca: float = 100.0  # R$
     custo_materia_prima_peca: float = 15.0  # R$ (custo MP direto por unidade)
+    preco_venda_peca: float = 0.0  # R$ (preço de venda — usado para calcular faturamento)
     
     # Financeiro da linha
-    faturamento_mensal_linha: Optional[float] = None  # R$ (para Custo Hora Parada)
+    # ⚠️ FATURAMENTO: Calcular automaticamente a partir dos inputs de produção:
+    #   Faturamento Mensal = Cadência × 60 × Horas/turno × Turnos × (Dias/ano ÷ 12) × Preço Venda/peça
+    # O usuário pode sobrescrever manualmente se preferir.
+    # Se preco_venda_peca > 0, o sistema DEVE calcular e pré-preencher o faturamento.
+    # Se ambos forem 0, exibir warning: "F08, F10 e F11 ficarão zeradas sem faturamento."
+    faturamento_mensal_linha: Optional[float] = None  # R$ (auto-calculado ou override manual)
 
 @dataclass
 class DoresSelecionadas:
@@ -388,8 +395,10 @@ class ParametrosDetalhados:
     f13_custo_manutencao_mes: Optional[float] = None  # R$
     
     # F14 - Supervisão (NOVA)
-    f14_num_supervisores: Optional[int] = None
-    f14_salario_supervisor: Optional[float] = None  # R$
+    # ⚠️ Nº de supervisores vem de ProcessoAtual.pessoas_supervisao_turno × turnos_dia
+    # Se F14 for selecionada e supervisores_turno = 0, EXIGIR preenchimento.
+    # Isso evita inconsistência entre o input do processo e o cálculo.
+    f14_salario_supervisor: Optional[float] = None  # R$ (default: ProcessoAtual.salario_medio_supervisor)
     
     # F15 - Compliance/EPIs (NOVA)
     f15_custo_epi_ano_por_pessoa: Optional[float] = None  # R$
@@ -428,11 +437,11 @@ from dataclasses import dataclass
 @dataclass
 class BasesComuns:
     """Cálculos base reutilizados em múltiplas fórmulas"""
-    producao_anual: float  # peças/ano
-    producao_mensal: float  # peças/mês
+    producao_anual: float  # peças/ano — BASE CANÔNICA de volume
     horas_anuais_operacao: float  # h
     pessoas_expostas_processo: int  # total operadores (todos os turnos)
     pessoas_expostas_inspecao: int  # total inspetores (todos os turnos)
+    pessoas_expostas_supervisao: int  # total supervisores (todos os turnos)
     custo_hora_operador: float  # R$/h (com encargos, divisor 176h)
     custo_hora_parada: float  # R$/h (baseado em faturamento)
     fator_encargos: float  # 1.7 / 1.85 / 2.0
@@ -563,15 +572,15 @@ class MetasReducao:
 def calcular_producao_anual(cadencia: float, horas_turno: float,
                            turnos_dia: int, dias_ano: int) -> float:
     """
-    Produção anual em peças
+    Produção anual em peças — BASE CANÔNICA de produção.
     Fórmula: Cadência × 60 × Horas/turno × Turnos/dia × Dias/ano
+    
+    ⚠️ Todas as fórmulas que precisam de volume de produção devem usar
+    esta base anual diretamente. NÃO calcular produção mensal separadamente
+    e multiplicar por 12, pois dias_ano/12 nem sempre é inteiro,
+    gerando divergências (ex: 250/12 = 20,83 vs 21 dias fixo).
     """
     return cadencia * 60 * horas_turno * turnos_dia * dias_ano
-
-def calcular_producao_mensal_from_cadencia(cadencia: float, horas_turno: float,
-                                           turnos_dia: int, dias_mes: float = 21) -> float:
-    """Produção mensal estimada"""
-    return cadencia * 60 * horas_turno * turnos_dia * dias_mes
 
 def calcular_horas_anuais(horas_turno: float, turnos_dia: int, dias_ano: int) -> float:
     """Horas anuais de operação"""
@@ -588,6 +597,24 @@ def calcular_custo_hora_operador(salario: float, fator_encargos: float) -> float
     Fórmula: (Salário × Fator de Encargos) ÷ 176
     """
     return (salario * fator_encargos) / 176
+
+def calcular_faturamento_mensal(cadencia: float, horas_turno: float,
+                                 turnos_dia: int, dias_ano: int,
+                                 preco_venda_peca: float) -> float:
+    """
+    Faturamento Mensal da Linha — AUTO-CALCULADO
+    Fórmula: (Cadência × 60 × Horas/turno × Turnos × Dias/ano × Preço Venda) ÷ 12
+    
+    Equivale a: Produção Anual × Preço Venda ÷ 12
+    
+    ⚠️ Se preco_venda_peca > 0, calcular automaticamente e pré-preencher no formulário.
+    O usuário pode sobrescrever manualmente (ex: quando a linha faz múltiplos produtos).
+    Se preco_venda = 0 e faturamento manual = 0, exibir warning.
+    """
+    if preco_venda_peca <= 0:
+        return 0.0
+    producao_anual = cadencia * 60 * horas_turno * turnos_dia * dias_ano
+    return (producao_anual * preco_venda_peca) / 12
 
 def calcular_custo_hora_parada(faturamento_mensal: float) -> float:
     """
@@ -650,6 +677,16 @@ def calcular_f03_curva_aprendizagem(num_contratacoes: int, salario_novato: float
               + (Salário Supervisor × Encargos × % Tempo × Meses Curva) ]
     
     NOVO V2.0: Inclui custo do tempo do SUPERVISOR dedicado ao treinamento.
+    
+    ⚠️ EXIBIÇÃO NO DASHBOARD E PPTX — OBRIGATÓRIO DETALHAR:
+    O cálculo deve ser apresentado com breakdown dos componentes, não apenas
+    "N contratações × N meses = R$ X". O vendedor precisa entender e explicar.
+    
+    Formato de exibição:
+      Custo Novato: R$ {salario} × {encargos} × {meses} = R$ X /contratação
+      Custo Supervisor: R$ {salario_sup} × {encargos} × {%tempo} × {meses} = R$ Y /contratação
+      Custo por contratação: R$ X + R$ Y = R$ Z
+      Total: {n_contratações} × R$ Z = R$ TOTAL
     """
     custo_novato = salario_novato * fator_encargos * meses_curva
     custo_supervisor = salario_supervisor * fator_encargos * pct_tempo_supervisor * meses_curva
@@ -681,23 +718,28 @@ def calcular_f04_turnover(num_desligamentos: int, salario_medio: float,
 ### DOR 2: BAIXA QUALIDADE
 
 ```python
-def calcular_f05_refugo_retrabalho(producao_mensal: float,
+def calcular_f05_refugo_retrabalho(producao_anual: float,
                                     pct_refugo: float, custo_mp_unidade: float,
                                     pct_retrabalho: float, horas_retrab_unidade: float,
                                     custo_hora_operador: float) -> tuple:
     """
     F05 (Revisada): Custo do Refugo e do Retrabalho (SEPARADOS)
     
-    Refugo = Produção Mensal × % Refugo × Custo MP/Unidade × 12
-    Retrabalho = Produção Mensal × % Retrabalho × Horas Retrab. × Custo Hora Operador × 12
+    Refugo = Produção ANUAL × % Refugo × Custo MP/Unidade
+    Retrabalho = Produção ANUAL × % Retrabalho × Horas Retrab. × Custo Hora Operador
+    
+    ⚠️ USAR PRODUÇÃO ANUAL DIRETAMENTE (cadência × 60 × h/turno × turnos × dias/ano).
+    NÃO usar produção_mensal × 12, pois dias_ano/12 ≠ 21 dias/mês fixo
+    (ex: 250/12 = 20,83), gerando divergência entre prod_anual e prod_mensal×12.
+    Calcular sobre o anual garante consistência com as demais bases.
     
     CORREÇÃO V2.0: Separa refugo (perda de material) de retrabalho (perda de MO).
     Diagnóstico mais preciso da origem da perda.
     
     Retorna: (custo_refugo, custo_retrabalho, total)
     """
-    custo_refugo = producao_mensal * pct_refugo * custo_mp_unidade * 12
-    custo_retrabalho = producao_mensal * pct_retrabalho * horas_retrab_unidade * custo_hora_operador * 12
+    custo_refugo = producao_anual * pct_refugo * custo_mp_unidade
+    custo_retrabalho = producao_anual * pct_retrabalho * horas_retrab_unidade * custo_hora_operador
     return (custo_refugo, custo_retrabalho, custo_refugo + custo_retrabalho)
 
 def calcular_f06_inspecao_manual(num_inspetores: int, salario_inspetor: float,
@@ -843,7 +885,12 @@ def calcular_f14_supervisao(num_supervisores: int, salario_supervisor: float,
     """
     F14 (NOVA): Custo da Supervisão e Gestão de Pessoas
     
-    Fórmula: Nº Supervisores × Salário × Fator Encargos × 12
+    Fórmula: Nº Supervisores (total turnos) × Salário × Fator Encargos × 12
+    
+    ⚠️ VALIDAÇÃO: Nº de supervisores = ProcessoAtual.pessoas_supervisao_turno × turnos_dia.
+    Se F14 for selecionada mas supervisores_turno = 0 no formulário de processo,
+    o sistema DEVE exigir que o usuário informe quantos supervisores há por turno.
+    O slide de "Processo Atual" deve refletir o mesmo valor usado no cálculo.
     
     Nota CFO: Processos automatizados são mais autônomos.
     Supervisores podem ser realocados para melhoria contínua.
@@ -954,7 +1001,9 @@ def calcular_ganho_anual(custo_atual: float, meta_reducao: float) -> float:
    ├── Turnos, Horas, Dias
    ├── Headcount (operadores, inspetores, supervisores)
    ├── Salários médios
-   ├── Faturamento mensal da linha (para Custo Hora Parada)
+   ├── Preço de Venda por Peça (R$)
+   ├── Faturamento mensal da linha (AUTO-CALCULADO a partir de produção × preço)
+   │   └── Campo editável: usuário pode sobrescrever se necessário
    └── Botão "Próximo"
 
 4. Seleção de Dores / Fórmulas
@@ -1137,6 +1186,7 @@ def render_dashboard(resultados: ResultadosFinanceiros):
 3. **Preenchimento de Tabelas:** Preencher células de tabelas com valores
 4. **Formatação:** Manter formatação original (cores, fontes, layout)
 5. **Incluir "Nota do CFO"** nos slides de quantificação para linguagem executiva
+6. **Labels amigáveis:** Usar `AREAS_ARV[key]["nome"]` no PPTX (ex: "🔧 Linhas de Montagem"), NÃO a chave interna (ex: "area_1_linhas_montagem"). Idem para porte: "Pequena Empresa", não "pequena".
 
 ### Estrutura
 
@@ -1295,6 +1345,12 @@ git push origin main
 - Percentuais: 0-100%
 - Fator de Encargos: 1.7 / 1.85 / 2.0
 
+### Validações de Consistência (Cross-Field)
+- **F05:** Produção deve ser calculada como anual (cadência × 60 × h × turnos × dias). Nunca usar produção_mensal × 12.
+- **F14:** Se selecionada, `pessoas_supervisao_turno` em ProcessoAtual DEVE ser > 0. O slide "Processo Atual" deve refletir o mesmo nº de supervisores usado no cálculo.
+- **F08/F10/F11:** Dependem de `faturamento_mensal_linha > 0`. Se selecionadas mas faturamento = 0, exibir warning ao usuário indicando que Custo Hora Parada será R$ 0 e estas fórmulas ficarão zeradas.
+- **F06:** Nº de inspetores total = `pessoas_inspecao_turno × turnos_dia`. Deve ser consistente com Slide "Processo Atual".
+
 ### Tratamento de Erros
 - Divisão por zero nos cálculos (especialmente Payback)
 - Campos obrigatórios não preenchidos
@@ -1367,7 +1423,19 @@ git push origin main
 
 ---
 
-**Última atualização:** 2026-02-24
-**Versão:** 2.0 (MVP — Motor de Cálculo V2.0)
+**Última atualização:** 2026-02-26
+**Versão:** 2.2 (MVP — Motor de Cálculo V2.0 + Correções de Auditoria + Feedback CEO)
 **Status:** Pronto para desenvolvimento
 **Base:** Documento "Custo da Inação V2.0 Revisado" — ARV Systems
+**Changelog V2.2 (feedback CEO 25/02):**
+- FIX: Faturamento Mensal agora é AUTO-CALCULADO (Produção Anual × Preço Venda ÷ 12)
+- FIX: Adicionado `preco_venda_peca` como input em ProcessoAtual
+- FIX: Nova função `calcular_faturamento_mensal()` nas Bases Comuns
+- FIX: F03 exige breakdown detalhado na exibição (Custo Novato + Custo Supervisor separados)
+**Changelog V2.1:**
+- FIX: F05 usa produção ANUAL direta (não mensal×12) para evitar divergência de arredondamento
+- FIX: F14 exige supervisores_turno > 0 em ProcessoAtual quando selecionada
+- FIX: Adicionado `pessoas_supervisao_turno` ao schema ProcessoAtual
+- FIX: Removida `calcular_producao_mensal_from_cadencia` (fonte de inconsistência)
+- FIX: PPTX usa labels amigáveis para área/porte (não chaves internas)
+- ADD: Seção de validações cross-field

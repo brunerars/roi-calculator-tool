@@ -31,6 +31,7 @@ class ProcessoAtual:
     # Pessoas
     pessoas_processo_turno: int = 5
     pessoas_inspecao_turno: int = 1
+    supervisores_por_turno: int = 0
 
     # Custos (salários brutos)
     salario_medio_operador: float = 2500.0
@@ -41,8 +42,9 @@ class ProcessoAtual:
     custo_unitario_peca: float = 100.0  # R$
     custo_materia_prima_peca: float = 15.0  # R$ (custo MP direto por unidade)
 
-    # Financeiro da linha (para custo hora parada)
-    faturamento_mensal_linha: Optional[float] = None  # R$
+    # Preço de venda e financeiro da linha (para custo hora parada)
+    preco_venda_peca: Optional[float] = None  # R$ — preço médio de venda por peça
+    faturamento_mensal_linha: Optional[float] = None  # R$ — derivado de producao × preco_venda
 
 
 @dataclass

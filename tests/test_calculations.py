@@ -64,8 +64,8 @@ class TestBasesComuns:
         )
         # 10 × 60 × 8 × 2 × 250 = 2.400.000
         assert calc.bases.producao_anual == 2_400_000
-        # 10 × 60 × 8 × 2 × 21 = 201.600
-        assert calc.bases.producao_mensal == 201_600
+        # Produção mensal derivada do anual: 2.400.000 / 12 = 200.000
+        assert calc.bases.producao_mensal == 200_000
 
     def test_pessoas_expostas(self, cliente_padrao, processo_padrao, investimento_padrao):
         calc = ROICalculator(
@@ -141,8 +141,8 @@ class TestCalculoCompleto:
         )
         resultado = calc.calcular()
 
-        assert resultado.breakdown_dor1["F01"] == 510_000
-        assert resultado.breakdown_dor2["F07"] == 24_000
+        assert resultado.breakdown_dor1["F01 - Mão de Obra Direta"] == 510_000
+        assert resultado.breakdown_dor2["F07 - Escapes de Qualidade"] == 24_000
 
 
 class TestInvestimento:

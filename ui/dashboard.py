@@ -6,6 +6,8 @@ import pandas as pd
 
 from models.results import ResultadosFinanceiros
 from models.inputs import ProcessoAtual, ParametrosDetalhados
+from core.formulas import calcular_horas_operacao_mes
+from config.constants import HORAS_MES_CLT
 
 
 def render_dashboard(resultados: ResultadosFinanceiros, processo: ProcessoAtual = None, parametros: ParametrosDetalhados = None):
@@ -43,6 +45,13 @@ def render_dashboard(resultados: ResultadosFinanceiros, processo: ProcessoAtual 
         with c2:
             chp_txt = f"R$ {resultados.custo_hora_parada:,.2f}/h" if resultados.custo_hora_parada > 0 else "Não informado"
             st.metric("Custo Hora Parada", chp_txt)
+            if processo is not None:
+                horas_op_mes = calcular_horas_operacao_mes(
+                    float(processo.horas_por_turno),
+                    int(processo.turnos_por_dia),
+                    int(processo.dias_operacao_ano),
+                )
+                st.caption(f"Base: {horas_op_mes:,.0f}h/mês (horas_turno × turnos × dias_ano/12)")
         with c3:
             st.metric("Fator de Encargos", f"{resultados.fator_encargos_usado:.2f}x")
 
@@ -174,7 +183,7 @@ def _render_calculo_detalhado(resultados: ResultadosFinanceiros, processo: Proce
     v = resultados.breakdown_dor1.get("F02 - Horas Extras", 0)
     if v > 0 and parametros.f02_media_he_mes_por_pessoa is not None:
         n = processo.pessoas_processo_turno * processo.turnos_por_dia
-        custo_hora = (processo.salario_medio_operador * fator) / 176
+        custo_hora = (processo.salario_medio_operador * fator) / HORAS_MES_CLT
         detalhes.append((
             "F02 - Horas Extras",
             "Nº Operadores × HE/mês × Custo Hora × 1,5 × 12",
@@ -184,12 +193,34 @@ def _render_calculo_detalhado(resultados: ResultadosFinanceiros, processo: Proce
 
     v = resultados.breakdown_dor1.get("F03 - Curva de Aprendizagem", 0)
     if v > 0 and parametros.f03_novas_contratacoes_ano is not None:
-        detalhes.append((
-            "F03 - Curva de Aprendizagem",
-            "Nº Contratações × (Custo Novato + Custo Supervisor durante treinamento)",
-            f"{parametros.f03_novas_contratacoes_ano} contratações × {parametros.f03_meses_curva or '?'} meses de curva",
-            v,
-        ))
+        n = parametros.f03_novas_contratacoes_ano
+        meses = parametros.f03_meses_curva or 0
+        sal_nov = parametros.f03_salario_novato or processo.salario_medio_operador
+        sal_sup = parametros.f03_salario_supervisor or processo.salario_medio_supervisor
+        pct_sup = parametros.f03_percentual_tempo_supervisor or 0.0
+
+        custo_novato = sal_nov * fator * meses
+        custo_supervisor = sal_sup * fator * pct_sup * meses
+        custo_por_contratacao = custo_novato + custo_supervisor
+
+        valores = (
+            f"Fórmula: Nº Contratações × (Custo Novato + Custo Supervisor)\n\n"
+            f"Custo Novato/contratação:\n"
+            f"R$ {sal_nov:,.2f} × {fator:.2f} × {meses} meses = R$ {custo_novato:,.2f}\n\n"
+            f"Custo Supervisor/contratação:\n"
+            f"R$ {sal_sup:,.2f} × {fator:.2f} × {pct_sup*100:.0f}% × {meses} meses = R$ {custo_supervisor:,.2f}\n\n"
+            f"Custo por contratação: R$ {custo_por_contratacao:,.2f}\n"
+            f"Total: {n} × R$ {custo_por_contratacao:,.2f} = R$ {(n*custo_por_contratacao):,.2f}"
+        )
+
+        detalhes.append(
+            (
+                "F03 - Curva de Aprendizagem",
+                "Nº Contratações × (Custo Novato + Custo Supervisor durante treinamento)",
+                valores,
+                v,
+            )
+        )
 
     v = resultados.breakdown_dor1.get("F04 - Turnover", 0)
     if v > 0 and parametros.f04_desligamentos_ano is not None:
@@ -307,12 +338,12 @@ def _render_calculo_detalhado(resultados: ResultadosFinanceiros, processo: Proce
     # --- Dor 5 ---
     v = resultados.breakdown_dor5.get("F14 - Supervisão", 0)
     if v > 0 and parametros.f14_num_supervisores is not None:
-        n_total = parametros.f14_num_supervisores * processo.turnos_por_dia
+        n_total = parametros.f14_num_supervisores
         sal = parametros.f14_salario_supervisor or processo.salario_medio_supervisor
         detalhes.append((
             "F14 - Supervisão",
-            "Nº Supervisores (total turnos) × Salário × Fator Encargos × 12",
-            f"{n_total} sup. ({parametros.f14_num_supervisores}/turno × {processo.turnos_por_dia} turnos) × R$ {sal:,.2f} × {fator:.2f} × 12",
+            "Nº Supervisores (total) × Salário × Fator Encargos × 12",
+            f"{n_total} supervisores (total) × R$ {sal:,.2f} × {fator:.2f} × 12",
             v,
         ))
 

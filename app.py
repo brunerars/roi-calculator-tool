@@ -40,7 +40,7 @@ def _init_state():
         st.session_state["etapa"] = 0
 
 
-def _nav_buttons(etapa: int):
+def _nav_buttons(etapa: int, *, can_advance: bool = True):
     """Renderiza botões de navegação."""
     col1, _, col3 = st.columns([1, 2, 1])
 
@@ -52,7 +52,7 @@ def _nav_buttons(etapa: int):
 
     with col3:
         if etapa < TOTAL_ETAPAS:
-            if st.button("Próximo →", key=f"proximo_{etapa}", type="primary"):
+            if st.button("Próximo →", key=f"proximo_{etapa}", type="primary", disabled=not can_advance):
                 st.session_state["etapa"] = etapa + 1
                 st.rerun()
 
@@ -111,7 +111,7 @@ def main():
         else:
             st.session_state["cliente"] = cliente
             st.session_state["processo"] = processo
-        _nav_buttons(etapa)
+        _nav_buttons(etapa, can_advance=not bool(erros))
 
     # Etapa 2: Seleção de Dores
     elif etapa == 2:
@@ -121,7 +121,7 @@ def main():
         else:
             dores = render_selecao_dores(cliente.area_atuacao)
             st.session_state["dores"] = dores
-        _nav_buttons(etapa)
+        _nav_buttons(etapa, can_advance=cliente is not None)
 
     # Etapa 3: Parâmetros Detalhados
     elif etapa == 3:
@@ -134,13 +134,13 @@ def main():
             st.warning("Volte à etapa 1 e preencha os dados básicos.")
         else:
             parametros = render_parametros_detalhados(dores, processo=processo, cliente=cliente)
-            erros = validar_parametros_detalhados(parametros, dores)
+            erros = validar_parametros_detalhados(parametros, dores, processo)
             if erros:
                 for e in erros:
                     st.error(e)
             else:
                 st.session_state["parametros"] = parametros
-        _nav_buttons(etapa)
+        _nav_buttons(etapa, can_advance=(dores is not None and cliente is not None and processo is not None and not bool(erros)))
 
     # Etapa 4: Metas de Redução
     elif etapa == 4:
@@ -150,7 +150,7 @@ def main():
         else:
             metas = render_metas_reducao(dores)
             st.session_state["metas"] = metas
-        _nav_buttons(etapa)
+        _nav_buttons(etapa, can_advance=dores is not None)
 
     # Etapa 5: Investimento
     elif etapa == 5:
@@ -161,7 +161,7 @@ def main():
                 st.error(e)
         else:
             st.session_state["investimento"] = investimento
-        _nav_buttons(etapa)
+        _nav_buttons(etapa, can_advance=not bool(erros))
 
     # Etapa 6: Dashboard de Resultados
     elif etapa == 6:
